@@ -2,7 +2,7 @@
 title: Unity IAPを試してみた (Yet Another Purchaser.cs)
 tags: Unity UnityIAP Android iOS C#
 ---
-## 前提
+# 前提
 - Unity 2021.3.8f1
 - In App Purchasing 4.3.0
 - Apple App Store、Google Play Store
@@ -11,6 +11,10 @@ tags: Unity UnityIAP Android iOS C#
 - この記事のソースは、実際のストアでテストしていますが、製品版での使用実績はありません。
   - ソース中のIDは実際と異なり、そのまま使用できるものではありません。
 
+## リソース
+### このプロジェクト
+- [ソース (GitHub)](https://github.com/tetr4lab/UnityIAP-Test)
+
 ### 公式ドキュメント
 - マニュアル
   - [Unity IAP](https://docs.unity3d.com/ja/current/Manual/UnityIAP.html)
@@ -18,16 +22,16 @@ tags: Unity UnityIAP Android iOS C#
 - スクリプトリファレンス
   - [In App Purchasing 4.3](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/api/UnityEngine.Purchasing.UnityPurchasing.html)
 
-## できること
+# できること
 - Unity In-App Purchasing をスクリプトから使います。
 - スクリプトレスで使うのでしたら、より簡易な方法が用意されています。公式ドキュメントや他の記事を参照してください。
 
-## 準備
+# 準備
 - ストアのアカウントが必要です。
 - アプリを登録してください。
 - アプリ内購入アイテムを登録してください。
 
-## 使い方
+# 使い方
 
 ### 導入
 - プロジェクトにサービスを導入します。
