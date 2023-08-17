@@ -7,6 +7,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Security;
+using UnityEngine.Purchasing.Extension;
 
 using Tetr4lab;
 
@@ -38,7 +39,7 @@ namespace UnityInAppPuchaser {
 	}
 
 	/// <summary>課金処理</summary>
-	public class Purchaser : IStoreListener {
+	public class Purchaser : IDetailedStoreListener {
 
 		#region Static
 		/// <summary>シングルトン</summary>
@@ -315,8 +316,8 @@ namespace UnityInAppPuchaser {
 				//});
 				onRestored?.Invoke (true);
 			} else if (isAppleAppStoreSelected) {
-				appleExtensions.RestoreTransactions (success => {
-					Debug.Log ($"Purchaser.Restored {success}");
+				appleExtensions.RestoreTransactions ((success, message) => {
+					Debug.Log ($"Purchaser.Restored {success} {message}");
 					onRestored?.Invoke (success);
 				});
 			} else {
@@ -358,8 +359,8 @@ namespace UnityInAppPuchaser {
 		}
 
 		/// <summary>初期化失敗</summary>
-		public void OnInitializeFailed (InitializationFailureReason error) {
-			Debug.Log ($"Purchaser.InitializeFailed {error}");
+		public void OnInitializeFailed (InitializationFailureReason error, string message) {
+			Debug.Log ($"Purchaser.InitializeFailed {error} {message}");
 			Status = PurchaseStatus.UNAVAILABLE;
 
 			switch (error) {
@@ -379,6 +380,12 @@ namespace UnityInAppPuchaser {
 					break;
 			}
 		}
+
+		/// <summary>初期化失敗 (旧形式)</summary>
+		public void OnInitializeFailed (InitializationFailureReason error) => OnInitializeFailed (error);
+
+		/// <summary>課金失敗</summary>
+		public void OnPurchaseFailed (Product product, PurchaseFailureDescription failureDescription) => OnPurchaseFailed (product, failureDescription.reason);
 
 		/// <summary>課金失敗</summary>
 		public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
