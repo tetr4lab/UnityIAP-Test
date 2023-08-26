@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using Unity.Services.Core;
+using Unity.Services.Core.Environments;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Security;
@@ -66,30 +68,6 @@ namespace UnityInAppPuchaser {
 		/// <summary>設定上のネット接続の有効性 (実際に接続できるかどうかは別)</summary>
 		public static bool IsNetworkAvailable => (Application.internetReachability != NetworkReachability.NotReachable);
 
-		/// <summary>クラス初期化</summary>
-		/// <param name="products">製品定義</param>
-		public static void Init (IEnumerable<ProductDefinition> products) {
-			var collection = products as ICollection<ProductDefinition>;
-			if (collection == null || collection.Count < 1) {
-                Debug.Log ("IAPが初期化できない");
-                Status = PurchaseStatus.UNAVAILABLE;
-            } else if (!IsNetworkAvailable) {
-                Debug.Log ("インターネットに接続していない");
-                if (Valid) { // 既に一度は初期化されている
-                } else {
-                    Status = PurchaseStatus.OFFLINE;
-                }
-            } else {
-#if UNITY_ANDROID
-                if (instance != null) { instance = null; }
-#endif
-
-				if (instance == null || Status != PurchaseStatus.AVAILABLE) {
-					instance = new Purchaser (products);
-				}
-			}
-		}
-
 		/// <summary>クラスを初期化してコールバックを得る</summary>
 		/// <param name="products">製品定義</param>
 		/// <param name="onInitialized">結果のコールバック</param>
@@ -102,8 +80,36 @@ namespace UnityInAppPuchaser {
 		/// <param name="products">製品定義</param>
 		/// <returns>結果</returns>
 		public static async Task<bool> InitAsync (IEnumerable<ProductDefinition> products = null) {
-			Init (products ?? _products);
-			await TaskEx.DelayUntil (() => (Valid || Status != PurchaseStatus.NOTINIT)); // IAPの初期化完了を待つ
+			// IAPを初期化する
+			products ??= _products;
+            var collection = products as ICollection<ProductDefinition>;
+            if (collection == null || collection.Count < 1) {
+                Debug.LogWarning ("IAPが初期化できない");
+                Status = PurchaseStatus.UNAVAILABLE;
+            } else if (!IsNetworkAvailable) {
+                Debug.LogWarning ("インターネットに接続していない");
+                if (Valid) { // 既に一度は初期化されている
+                } else {
+                    Status = PurchaseStatus.OFFLINE;
+                }
+            } else {
+#if UNITY_ANDROID
+                if (instance != null) { instance = null; }
+#endif
+                if (instance == null || Status != PurchaseStatus.AVAILABLE) {
+                    // UnityPurchasingを初期化する前にUnityServicesを初期化する必要がある
+                    try {
+                        var options = new InitializationOptions ().SetEnvironmentName ("production");
+                        await UnityServices.InitializeAsync (options);
+                    }
+                    catch (Exception exception) {
+                        Debug.LogError ($"An error occurred during services initialization. {exception}");
+                    }
+                    instance = new Purchaser (products);
+                }
+            }
+            // IAPの初期化完了を待つ
+            await TaskEx.DelayUntil (() => Valid || Status != PurchaseStatus.NOTINIT);
 			var ready = Valid && Status == PurchaseStatus.AVAILABLE;
 			_products = ready ? null : products; // 未完了ならキャッシュ
 			return ready;
