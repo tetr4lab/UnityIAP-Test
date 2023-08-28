@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿#if ALLOW_UIAP
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
@@ -44,3 +45,4 @@ public class Catalog : MonoBehaviour {
 	}
 
 }
+#endif

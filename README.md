@@ -3,8 +3,14 @@ title: Unity IAPを試してみた (Yet Another Purchaser.cs)
 tags: Unity UnityIAP Android iOS C#
 ---
 # 前提
-- Unity 2021.3.29f1
-- unity.purchasing 4.9.4
+- Unity & Purchasing
+	- Unity 2021.3.28f1, Unity 2021.3.29f1
+		- com.unity.purchasing 4.9.3 以上が要求されます。([versions](https://docs.unity3d.com/Packages/com.unity.purchasing@4.9/changelog/CHANGELOG.html))
+	- com.unity.purchasing 4.9.3, com.unity.purchasing 4.9.4
+		- 不具合があります。([フォーラム](https://forum.unity.com/threads/onpurchasefailed-is-not-called-unity-2022-3-5f1-iap4-9-3-android-platform.1463681/))
+	- 動作する組み合わせ
+		- Unity 2021.3.23f1, com.unity.purchasing 4.7.0
+		- Unity 2021.3.27f1, com.unity.purchasing 4.8.0
 - Apple App Store、Google Play Store
 - この記事では、Unity IAPの一部機能を限定的に使用し、汎用性のない部分があります。
   - サーバレス、消費／非消費タイプ使用、購読タイプ未使用

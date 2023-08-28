@@ -3,9 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+#if ALLOW_UIAP
 using UnityEngine.Purchasing;
 using UnityInAppPuchaser;
-
+#endif
 using Tetr4lab;
 
 /// <summary>ストア</summary>
@@ -17,6 +18,7 @@ public class Store : MonoBehaviour {
 	/// <summary>復元ボタン</summary>
 	[SerializeField] public Button RestoreButton = default;
 
+#if ALLOW_UIAP
 	/// <summary>製品目録 (製品定義(IDと種別)の羅列)</summary>
 	private readonly ProductDefinition [] products = new [] {
 			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item1", ProductType.Consumable),
@@ -27,6 +29,7 @@ public class Store : MonoBehaviour {
 			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
 			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
 		};
+#endif
 
 	/// <summary>起動</summary>
 	private void Start () {
@@ -39,6 +42,7 @@ public class Store : MonoBehaviour {
 	/// <summary>初期化とカタログの生成</summary>
 	private async void CreateCatalog (bool force = false) {
 		WaitIndicator.display = true;
+#if ALLOW_UIAP
 		if (!Purchaser.Valid) {
 			// 未初期化なら初期化完了を待機
 			await Purchaser.InitAsync (products);
@@ -50,8 +54,10 @@ public class Store : MonoBehaviour {
 				WaitIndicator.display = false;
 			}
 		}
+#endif
 	}
 
+#if ALLOW_UIAP
 	/// <summary>購入ボタン</summary>
 	public async void OnPushBuyButon (Product product) {
 		WaitIndicator.display = true;
@@ -103,5 +109,10 @@ public class Store : MonoBehaviour {
 			CreateCatalog ();
 		}
 	}
+#else
+    public void OnPushBuyButon (object product) { }
+	public void OnPushConsumeButton (object product) { }
+	public void OnPushRestoreButton () { }
+#endif
 
 }

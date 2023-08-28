@@ -1,3 +1,6 @@
+#define UNITY_PURCHASING_4_8_0_OR_HIGHER
+#define UNITY_PURCHASING_4_6_0_OR_HIGHER
+#if ALLOW_UIAP
 using System;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
@@ -14,7 +17,6 @@ using UnityEngine.Purchasing.Extension;
 using Tetr4lab;
 
 namespace UnityInAppPuchaser {
-#if ALLOW_UIAP
 	/// <summary>IAPの利用可能状況</summary>
 	public enum PurchaseStatus {
 		NOTINIT = 0, // 未初期化状態`
@@ -41,7 +43,11 @@ namespace UnityInAppPuchaser {
 	}
 
 	/// <summary>課金処理</summary>
+#if UNITY_PURCHASING_4_8_0_OR_HIGHER
 	public class Purchaser : IDetailedStoreListener {
+#else
+    public class Purchaser : IStoreListener {
+#endif
 
 		#region Static
 		/// <summary>シングルトン</summary>
@@ -322,10 +328,17 @@ namespace UnityInAppPuchaser {
 				//});
 				onRestored?.Invoke (true);
 			} else if (isAppleAppStoreSelected) {
+#if UNITY_PURCHASING_4_6_0_OR_HIGHER || UNITY_PURCHASING_4_8_0_OR_HIGHER
 				appleExtensions.RestoreTransactions ((success, message) => {
 					Debug.Log ($"Purchaser.Restored {success} {message}");
 					onRestored?.Invoke (success);
 				});
+#else
+                appleExtensions.RestoreTransactions ((success) => {
+                    Debug.Log ($"Purchaser.Restored {success}");
+                    onRestored?.Invoke (success);
+                });
+#endif
 			} else {
 				onRestored?.Invoke (
 #if UNITY_EDITOR
@@ -390,9 +403,10 @@ namespace UnityInAppPuchaser {
 		/// <summary>初期化失敗 (旧形式)</summary>
 		public void OnInitializeFailed (InitializationFailureReason error) => OnInitializeFailed (error);
 
+#if UNITY_PURCHASING_4_8_0_OR_HIGHER
 		/// <summary>課金失敗</summary>
 		public void OnPurchaseFailed (Product product, PurchaseFailureDescription failureDescription) => OnPurchaseFailed (product, failureDescription.reason);
-
+#endif
 		/// <summary>課金失敗</summary>
 		public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
 			Debug.Log ($"Purchaser.PurchaseFailed Reason={reason}\n{product.GetProperties ()}");
@@ -536,5 +550,5 @@ namespace UnityInAppPuchaser {
 
 	}	// Inventory
 
-#endif
 }	// namespace
+#endif

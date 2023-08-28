@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿#if ALLOW_UIAP
+using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.Purchasing;
@@ -61,3 +62,4 @@ public class CatalogItem : MonoBehaviour {
 	}
 
 }
+#endif
