@@ -42,7 +42,7 @@ namespace UnityInAppPuchaser {
 		Disconnected,				// ネット接続がない
 	}
 
-	/// <summary>課金処理</summary>
+    /// <summary>課金処理</summary>
 #if UNITY_PURCHASING_4_8_0_OR_HIGHER
 	public class Purchaser : IDetailedStoreListener {
 #else
@@ -71,16 +71,22 @@ namespace UnityInAppPuchaser {
 		/// <summary>購入失敗の理由</summary>
 		public static PurchaseResult result { get; private set; }
 
-		/// <summary>設定上のネット接続の有効性 (実際に接続できるかどうかは別)</summary>
-		public static bool IsNetworkAvailable => (Application.internetReachability != NetworkReachability.NotReachable);
+        /// <summary>初期化通過時の処理 (複数の実行機会)</summary>
+        private static Action<bool> onInitialized;
 
-		/// <summary>クラスを初期化してコールバックを得る</summary>
-		/// <param name="products">製品定義</param>
-		/// <param name="onInitialized">結果のコールバック</param>
-		public static async void Init (IEnumerable<ProductDefinition> products, Action<bool> onInitialized) => onInitialized?.Invoke (await InitAsync (products));
+        /// <summary>クラスを初期化してコールバックを得る</summary>
+        /// <param name="products">製品定義</param>
+        /// <param name="onInitialized">結果のコールバック</param>
+        public static async void Init (IEnumerable<ProductDefinition> products, Action<bool> onInitialized) {
+            var result = await InitAsync (products);
+            if (onInitialized != null) {
+                Purchaser.onInitialized = onInitialized;
+                onInitialized.Invoke (result);
+            }
+        }
 
-		/// <summary>製品目録キャッシュ</summary>
-		private static IEnumerable<ProductDefinition> _products = null;
+        /// <summary>製品目録キャッシュ</summary>
+        private static IEnumerable<ProductDefinition> _products = null;
 
 		/// <summary>クラスを初期化して結果を得る</summary>
 		/// <param name="products">製品定義</param>
@@ -92,7 +98,7 @@ namespace UnityInAppPuchaser {
             if (collection == null || collection.Count < 1) {
                 Debug.LogWarning ("IAPが初期化できない");
                 Status = PurchaseStatus.UNAVAILABLE;
-            } else if (!IsNetworkAvailable) {
+            } else if (!Tetr4labUtility.IsNetworkAvailable) {
                 Debug.LogWarning ("インターネットに接続していない");
                 if (Valid) { // 既に一度は初期化されている
                 } else {
@@ -137,20 +143,21 @@ namespace UnityInAppPuchaser {
 		}
 
 		/// <summary>課金 指定製品の課金処理を開始する</summary>
-		public static void Purchase (string productID) {
+		public static bool Purchase (string productID) {
 			if (string.IsNullOrEmpty (productID)) {
 				result = PurchaseResult.ProductUnavailable;
-			} else {
-				Purchase (instance?.controller?.products?.WithID (productID));
+				return false;
 			}
+			return Purchase (instance?.controller?.products?.WithID (productID));
 		}
 
 		/// <summary>課金 指定製品の課金処理を開始する</summary>
-		public static void Purchase (Product product) {
+		public static bool Purchase (Product product) {
 			result = PurchaseResult.NotValid;
 			if (product != null && Valid) {
-				instance.purchase (product);
+				return instance.purchase (product);
 			}
+			return false;
 		}
 
 		/// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
@@ -170,16 +177,27 @@ namespace UnityInAppPuchaser {
 		}
 
 		/// <summary>復元 課金情報の復元を行い、結果のコールバックを得ることができる</summary>
-		public static void Restore (Action<bool> onRestored = null) {
+		public static void Restore (Action<bool, string> onRestored = null) {
 			if (Valid) {
 				instance.restore (onRestored);
 			} else {
-				onRestored?.Invoke (false);
+				onRestored?.Invoke (false, null);
 			}
 		}
 
-		/// <summary>課金 指定製品の課金を処理してコールバックを得る</summary>
-		public static async void Purchase (Product product, Action<bool> onPurchased) => onPurchased?.Invoke (await PurchaseAsync (product));
+        /// <summary>所有の確認</summary>
+        public static bool? IsStocked (string productID) {
+            if (!string.IsNullOrEmpty (productID) && Valid) {
+                Product product = instance.controller.products.WithID (productID);
+                if (product != null) {
+                    return Inventory [product];
+                }
+            }
+            return null;
+        }
+
+        /// <summary>課金 指定製品の課金を処理してコールバックを得る</summary>
+        public static async void Purchase (Product product, Action<bool> onPurchased) => onPurchased?.Invoke (await PurchaseAsync (product));
 
 		/// <summary>課金 指定製品の課金を処理してコールバックを得る</summary>
 		public static async void Purchase (string productID, Action<bool> onPurchased) => onPurchased?.Invoke (await PurchaseAsync (productID));
@@ -291,7 +309,7 @@ namespace UnityInAppPuchaser {
 
 		/// <summary>課金開始</summary>
 		private bool purchase (Product product) {
-			if (!IsNetworkAvailable) {
+			if (!Tetr4labUtility.IsNetworkAvailable) {
 				Debug.Log ("インターネットへの接続経路がない");
 				result = PurchaseResult.Disconnected;
 				return false;
@@ -318,39 +336,39 @@ namespace UnityInAppPuchaser {
 		}
 
 		/// <summary>復元</summary>
-		private void restore (Action<bool> onRestored = null) {
+		private void restore (Action<bool, string> onRestored = null) {
 			Debug.Log ("Purchaser.Restore");
 			if (isGooglePlayStoreSelected) {
 				// 不要? ref: https://docs.unity3d.com/ja/current/Manual/UnityIAPRestoringTransactions.html
 				//googlePlayStoreExtensions.RestoreTransactions (success => {
 				//	Debug.Log ($"Purchaser.Restored {success}");
-				//	onRestored?.Invoke (success);
+				//	onRestored?.Invoke (success, null);
 				//});
-				onRestored?.Invoke (true);
+				onRestored?.Invoke (true, null);
 			} else if (isAppleAppStoreSelected) {
 #if UNITY_PURCHASING_4_6_0_OR_HIGHER || UNITY_PURCHASING_4_8_0_OR_HIGHER
-				appleExtensions.RestoreTransactions ((success, message) => {
+                appleExtensions.RestoreTransactions ((success, message) => {
 					Debug.Log ($"Purchaser.Restored {success} {message}");
-					onRestored?.Invoke (success);
+					onRestored?.Invoke (success, message);
 				});
 #else
                 appleExtensions.RestoreTransactions ((success) => {
                     Debug.Log ($"Purchaser.Restored {success}");
-                    onRestored?.Invoke (success);
+                    onRestored?.Invoke (success, null);
                 });
 #endif
-			} else {
+            } else {
 				onRestored?.Invoke (
 #if UNITY_EDITOR
 					true
 #else
 					false
 #endif
-					);
+				, null);
 			}
 		}
 
-				#region Event Handler
+		#region Event Handler
 
 		/// <summary>iOS 'Ask to buy' 未成年者の「承認と購入のリクエスト」 承認または却下されると通常の購入イベントが発生する</summary>
 		private void OnDeferred (Product product) {
@@ -372,16 +390,14 @@ namespace UnityInAppPuchaser {
 						Inventory [product] = possession (product);
 					}
 				}
-				// ToDo: 
-				//StoreItem.TableWrite (controller.products);
-			}
-		}
+                onInitialized?.Invoke (valid);
+            }
+        }
 
 		/// <summary>初期化失敗</summary>
 		public void OnInitializeFailed (InitializationFailureReason error, string message) {
 			Debug.Log ($"Purchaser.InitializeFailed {error} {message}");
 			Status = PurchaseStatus.UNAVAILABLE;
-
 			switch (error) {
 				case InitializationFailureReason.PurchasingUnavailable:
 					Debug.Log ("デバイス設定でアプリ内購入が無効です。");
@@ -398,17 +414,18 @@ namespace UnityInAppPuchaser {
 					//Debug.Log ("The store reported the app as unknown.");
 					break;
 			}
-		}
+            onInitialized?.Invoke (false);
+        }
 
-		/// <summary>初期化失敗 (旧形式)</summary>
-		public void OnInitializeFailed (InitializationFailureReason error) => OnInitializeFailed (error);
+        /// <summary>初期化失敗 (旧形式)</summary>
+        public void OnInitializeFailed (InitializationFailureReason error) => OnInitializeFailed (error);
 
 #if UNITY_PURCHASING_4_8_0_OR_HIGHER
 		/// <summary>課金失敗</summary>
 		public void OnPurchaseFailed (Product product, PurchaseFailureDescription failureDescription) => OnPurchaseFailed (product, failureDescription.reason);
 #endif
-		/// <summary>課金失敗</summary>
-		public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
+        /// <summary>課金失敗</summary>
+        public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
 			Debug.Log ($"Purchaser.PurchaseFailed Reason={reason}\n{product.GetProperties ()}");
 
 			switch (reason) {
@@ -489,7 +506,7 @@ namespace UnityInAppPuchaser {
 			}
 		}
 
-				#endregion
+		#endregion
 	}	// Purchaser
 
 	/// <summary>製品拡張</summary>

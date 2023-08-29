@@ -71,7 +71,7 @@ var products = new [] {
 };
 ```
 
-- これらはストア・ダッシュボードでの設定と正しく呼応している必要があります。
+- これらはストア・コンソールでの設定と正しく呼応している必要があります。
   - Apple App Storeでは、IDと製品タイプの双方が設定されます。
     - 消費と非消費(恒久)は明確に区別されます。
   - Google Play Storeでは、IDが設定されますが、消費の有無についての設定はありません。
@@ -82,7 +82,7 @@ var products = new [] {
 - 製品定義を渡して初期化を行います。
   - `Purchaser.Init(products)`の形では、初期化を開始するのみでブロックされません。
     - `Purchaser.Init(products, success => Debug.Log (success))`とすると、結果のコールバックを受けることができます。
-  - `await Purchaser.InitAsync ()`とすれば、同期的に成否を得られます。
+  - `var success = await Purchaser.InitAsync ()`とすれば、同期的に成否を得られます。
 - 例えば、以下のように書くことで、初期化の完了を待って課金アイテム一覧を表示するようなことことが可能です。
   - この`Purchaser.Products`は、ストアから得た製品目録`IStoreController.products`を参照します。
 
@@ -118,7 +118,7 @@ foreach (var product in Purchaser.Products.all) {
 #### 目録の制約
 - 初期化時に定義を渡さなかった製品は、ストアにあっても製品目録には載りません。
   - ストアから製品のカタログが得られるわけではありません。つまり、ストアに新製品を登録しただけでは、製品に組み込むことはできません。
-- `Product.definition.enabled`は、ストアのダッシュボードで設定されている有効/無効状態に関わりなく常に`true`になります。
+- `Product.definition.enabled`は、ストアのコンソールで設定されている有効/無効状態に関わりなく常に`true`になります。
 - `Product.availableToPurchase`は、ストアにアイテムがない場合とストアで無効になっている場合に`False`になります。
 - ストアでの製品の有効/無効は、アプリの使用する製品定義に連動させ、緊急時以外は、ストア独自に製品を無効化しないようにしてください。
 
@@ -144,5 +144,5 @@ foreach (var product in Purchaser.Products.all) {
   - 消費に成功すると真が返されて「未所有」状態になります。
 
 ### 復元
-- `Restore (Action<bool> onRestored = null)`で、課金情報の復元を行い、結果のコールバックを得ることができます。
+- `Restore (Action<bool, string> onRestored = null)`で、課金情報の復元を行い、結果のコールバックを得ることができます。
   - Google Play Storeでは、何も処理されず、常に成功します。

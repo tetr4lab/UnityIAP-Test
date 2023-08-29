@@ -21,14 +21,14 @@ public class Store : MonoBehaviour {
 #if ALLOW_UIAP
 	/// <summary>製品目録 (製品定義(IDと種別)の羅列)</summary>
 	private readonly ProductDefinition [] products = new [] {
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item1", ProductType.Consumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item2", ProductType.NonConsumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item3", ProductType.NonConsumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item4", ProductType.NonConsumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
-			new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
-		};
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item1", ProductType.Consumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item2", ProductType.NonConsumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item3", ProductType.NonConsumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item4", ProductType.NonConsumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
+            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
+        };
 #endif
 
 	/// <summary>起動</summary>
@@ -89,14 +89,14 @@ public class Store : MonoBehaviour {
 	public void OnPushRestoreButton () {
 		if (!Purchaser.Valid) { return; } // 未初期化なら離脱
 		WaitIndicator.display = true;
-		Purchaser.Restore (success => {
+		Purchaser.Restore ((success, message) => {
 			if (success) {
 				// カタログを再生成
 				CreateCatalog (true);
 			}
 			ModalDialog.Create (
 				transform.parent,
-				success ? "リストアしました。" : "リストアに失敗しました。\nネットワーク接続を確認してください。",
+				success ? "リストアしました。" : $"リストアに失敗しました。\nネットワーク接続を確認してください。\n{message}",
 				() => WaitIndicator.display = false
 			);
 		});
@@ -104,7 +104,7 @@ public class Store : MonoBehaviour {
 
 	/// <summary>駆動</summary>
 	private void Update () {
-        if (!Purchaser.Valid && Purchaser.Status == PurchaseStatus.OFFLINE && Purchaser.IsNetworkAvailable) {
+        if (!Purchaser.Valid && Purchaser.Status == PurchaseStatus.OFFLINE && Tetr4labUtility.IsNetworkAvailable) {
 			// オンラインになったので遅延初期化を実施
 			CreateCatalog ();
 		}
