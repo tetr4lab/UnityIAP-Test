@@ -18,6 +18,9 @@ public class Store : MonoBehaviour {
 	/// <summary>復元ボタン</summary>
 	[SerializeField] public Button RestoreButton = default;
 
+	/// <summary>情報表示テキスト</summary>
+	[SerializeField] public Text InfoPanel = default;
+
 #if ALLOW_UIAP
 	/// <summary>製品目録 (製品定義(IDと種別)の羅列)</summary>
 	private readonly ProductDefinition [] products = new [] {
@@ -28,7 +31,7 @@ public class Store : MonoBehaviour {
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
-        };
+		};
 #endif
 
 	/// <summary>起動</summary>
@@ -45,7 +48,9 @@ public class Store : MonoBehaviour {
 #if ALLOW_UIAP
 		if (!Purchaser.Valid) {
 			// 未初期化なら初期化完了を待機
-			await Purchaser.InitAsync (products);
+			await Purchaser.InitializeAsync (products, ready => {
+				InfoPanel.text = $"{Purchaser.Status}";
+			});
 		}
 		if (Purchaser.Valid && (Catalog.Count == null || force)) {
 			// 初期化できていて、未生成または強制なら、(再)生成
@@ -61,14 +66,16 @@ public class Store : MonoBehaviour {
 	/// <summary>購入ボタン</summary>
 	public async void OnPushBuyButon (Product product) {
 		WaitIndicator.display = true;
-		await Purchaser.PurchaseAsync (product);
-		if (Purchaser.result == PurchaseResult.UserCancelled) {
+		await Purchaser.PurchaseAsync (product, success => {
+            InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
+        });
+		if (Purchaser.Result == PurchaseResult.UserCancelled) {
 			// ユーザによるキャンセル (ただし、エディタでは挙動が異なる)
 			WaitIndicator.display = false;
 		} else {
 			ModalDialog.Create (
 				transform.parent,
-				$"{Purchaser.result}\n{product.metadata.shortTitle ()}の購入に{((Purchaser.result == PurchaseResult.SUCCESS) ? "成功" : "失敗")}しました。",
+				$"{Purchaser.Result}\n{product.metadata.shortTitle ()}の購入に{((Purchaser.Result == PurchaseResult.SUCCESS) ? "成功" : "失敗")}しました。",
 				() => WaitIndicator.display = false
 			);
 		}
