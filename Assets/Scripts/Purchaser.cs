@@ -66,10 +66,15 @@ namespace UnityInAppPuchaser {
 		public static ProductCollection Products => Valid ? instance.controller.products : null;
 
 		/// <summary>有効 購入が完了している</summary>
-		public static bool PurchaseValid => (instance.purchasing == false);
+		public static bool PurchaseValid => Valid && instance.purchasing == false;
 
-		/// <summary>購入失敗の理由</summary>
-		public static PurchaseResult Result { get; private set; }
+        /// <summary>IDから製品を得る</summary>
+        /// <param name="productID">製品ID</param>
+        /// <returns>製品</returns>
+        public static Product Product (string productID) => !string.IsNullOrEmpty (productID) && Valid ? instance.controller.products.WithID (productID) : null;
+
+        /// <summary>購入失敗の理由</summary>
+        public static PurchaseResult Result { get; private set; }
 
         /// <summary>初期化通過時の処理 (複数の実行機会)</summary>
         private static Action<bool> onInitialized;
@@ -118,16 +123,17 @@ namespace UnityInAppPuchaser {
                     try {
                         var options = new InitializationOptions ().SetEnvironmentName ("production");
                         await UnityServices.InitializeAsync (options);
-                        instance = new Purchaser (products);
-                        // 初期化完了を待つ
-                        await TaskEx.DelayUntil (() => Valid || Status != PurchaseStatus.NOTINIT);
                     }
                     catch (Exception exception) {
-                        Debug.LogError ($"An error occurred during services initialization. {exception}");
+						Debug.LogError ($"An error occurred during services initialization. {exception}");
 						instance = null;
-                        Status = PurchaseStatus.UNAVAILABLE;
-                        onInitialized?.Invoke (false);
-                    }
+						Status = PurchaseStatus.UNAVAILABLE;
+						onInitialized?.Invoke (false);
+						return false;
+					}
+                    instance = new Purchaser (products);
+                    // 初期化完了を待つ
+                    await TaskEx.DelayUntil (() => Status != PurchaseStatus.NOTINIT);
                 }
             }
 			var ready = Valid && Status == PurchaseStatus.AVAILABLE;
@@ -137,26 +143,19 @@ namespace UnityInAppPuchaser {
 
 		/// <summary>所有検証 有効なレシートが存在する</summary>
 		private static bool possession (Product product) {
-			return product.hasReceipt && Purchaser.ValidateReceipt (product);
+			return product.hasReceipt && ValidateReceipt (product);
 		}
 
 		/// <summary>レシート検証</summary>
-		public static bool ValidateReceipt (string productID) {
-			return (!string.IsNullOrEmpty (productID) && instance.validateReceipt (instance.controller.products.WithID (productID)));
-		}
+		public static bool ValidateReceipt (string productID) => ValidateReceipt (Product (productID));
 
 		/// <summary>レシート検証</summary>
 		public static bool ValidateReceipt (Product product) {
-			return (instance != null && instance.validateReceipt (product));
+			return product != null && Valid && instance.validateReceipt (product);
 		}
 
 		/// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-		public static bool ConfirmPendingPurchase (string productID) {
-			if (!string.IsNullOrEmpty (productID) && Valid) {
-				return instance.confirmPendingPurchase (instance.controller.products.WithID (productID));
-			}
-			return false;
-		}
+		public static bool ConfirmPendingPurchase (string productID) => ConfirmPendingPurchase (Product (productID));
 
 		/// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
 		public static bool ConfirmPendingPurchase (Product product) {
@@ -175,16 +174,15 @@ namespace UnityInAppPuchaser {
 			}
 		}
 
+		/// <summary>所有の確認</summary>
+		/// <param name="productID">製品ID</param>
+		/// <returns>製品の所有状態、製品が存在しなければnullを返す</returns>
+		public static bool? IsStocked (string productID) => IsStocked (Product (productID));
+
         /// <summary>所有の確認</summary>
-        public static bool? IsStocked (string productID) {
-            if (!string.IsNullOrEmpty (productID) && Valid) {
-                Product product = instance.controller.products.WithID (productID);
-                if (product != null) {
-                    return Inventory [product];
-                }
-            }
-            return null;
-        }
+        /// <param name="product">製品</param>
+        /// <returns>製品の所有状態、製品が存在しなければnullを返す</returns>
+        public static bool? IsStocked (Product product) => product != null && Valid && Inventory.ContainsKey (product) ? Inventory [product] : null;
 
         /// <summary>課金を開始してコールバックを得る</summary>
         /// <param name="product">製品</param>
@@ -201,7 +199,7 @@ namespace UnityInAppPuchaser {
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
         public static async Task<bool> PurchaseAsync (Product product, Action<bool> onPurchased = null) {
-			Debug.Log ($"BuyProduct ({product}, {onInitialized}) {product?.definition?.id}");
+			Debug.Log ($"PurchaseAsync ({product}, {onInitialized}) {product?.definition?.id}");
 			if (product == null) {
                 // 無効な製品
                 Result = PurchaseResult.ProductUnavailable;
@@ -218,26 +216,22 @@ namespace UnityInAppPuchaser {
 		}
 
         /// <summary>課金</summary>
-        /// <param name="sku">製品ID</param>
+        /// <param name="productID">製品ID</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static async Task<bool> PurchaseAsync (string sku, Action<bool> onPurchased = null) {
-			Debug.Log ($"BuyProduct (sku: {sku})");
-			if (string.IsNullOrEmpty (sku)) {
+        public static async Task<bool> PurchaseAsync (string productID, Action<bool> onPurchased = null) {
+			Debug.Log ($"PurchaseAsync (productID: {productID})");
+			if (string.IsNullOrEmpty (productID)) {
                 // 無効な製品ID
                 Result = PurchaseResult.ProductUnavailable;
             } else if (!Valid && !await InitializeAsync ()) {
 				// 初期化できていないので再初期化したものの失敗
 				Result = PurchaseResult.NotValid;
 			} else {
-                // skuから製品を検出 (要初期化)
-                var product = instance?.controller?.products?.WithID (sku);
-				if (product != null) {
-                    return await PurchaseAsync (product, onPurchased);
-				}
-				// 検出できなかった
-                Result = PurchaseResult.ProductUnavailable;
+				// 製品IDから製品を検出するには要初期化
+				return await PurchaseAsync (Product (productID), onPurchased);
             }
+            onPurchased?.Invoke (false);
             return false;
         }
 
@@ -260,8 +254,8 @@ namespace UnityInAppPuchaser {
 		/// <summary>有効</summary>
 		private bool valid => (controller != null && controller.products != null);
 
-		/// <summary>購入中</summary>
-		private bool purchasing;
+        /// <summary>購入中</summary>
+        private bool purchasing;
 
 		/// <summary>コンストラクタ</summary>
 		private Purchaser (IEnumerable<ProductDefinition> products) {
@@ -284,6 +278,7 @@ namespace UnityInAppPuchaser {
 #if UNITY_EDITOR
 			return true;
 #else
+			// 各Tangleクラスを得るために、あらかじめ「Services > In-App Purchasing > Receipt Validation Obfuscator...」を実行してください。
 			var validator = new CrossPlatformValidator (GooglePlayTangle.Data (), AppleTangle.Data (), Application.identifier);
 			try {
 				var result = validator.Validate (product.receipt);
@@ -314,10 +309,10 @@ namespace UnityInAppPuchaser {
 				return false;
 			}
 #endif
-		}
+        }
 
-		/// <summary>課金開始</summary>
-		private bool purchase (Product product) {
+        /// <summary>課金開始</summary>
+        private bool purchase (Product product) {
 			if (!Tetr4labUtility.IsNetworkAvailable) {
 				Debug.Log ("インターネットへの接続経路がない");
 				Result = PurchaseResult.Disconnected;
@@ -335,12 +330,19 @@ namespace UnityInAppPuchaser {
 
 		/// <summary>保留した課金の完了</summary>
 		private bool confirmPendingPurchase (Product product) {
+			if (!Tetr4labUtility.IsNetworkAvailable) {
+				Debug.Log ("インターネットへの接続経路がない");
+				Result = PurchaseResult.Disconnected;
+				return false;
+			}
 			if (product != null && Inventory [product] && possession (product)) {
 				controller.ConfirmPendingPurchase (product);
 				Inventory [product] = false;
 				Debug.Log ($"Purchaser.ConfirmPendingPurchase {product.GetProperties ()}");
+				Result = PurchaseResult.SUCCESS;
 				return true;
 			}
+			Result = PurchaseResult.ERROR;
 			return false;
 		}
 
@@ -385,8 +387,9 @@ namespace UnityInAppPuchaser {
 		}
 
 		/// <summary>初期化完了</summary>
-		public void OnInitialized (IStoreController controller, IExtensionProvider extensions) {
-			Debug.Log ($"Purchaser.Initialized {controller}, {extensions}");
+		public async void OnInitialized (IStoreController controller, IExtensionProvider extensions) {
+			await TaskEx.DelayUntil (() => instance != null); // シングルトンインスタンスの生成を待つ
+			Debug.Log ($"Purchaser.Initialized ({controller}, {extensions})");
 			appleExtensions = extensions.GetExtension<IAppleExtensions> ();
 			appleExtensions.RegisterPurchaseDeferredListener (OnDeferred);
 			googlePlayStoreExtensions = extensions.GetExtension<IGooglePlayStoreExtensions> ();
@@ -439,7 +442,6 @@ namespace UnityInAppPuchaser {
         /// <summary>課金失敗</summary>
         public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
 			Debug.Log ($"Purchaser.PurchaseFailed Reason={reason}\n{product.GetProperties ()}");
-
 			switch (reason) {
 				case PurchaseFailureReason.PurchasingUnavailable:
 					Debug.Log ("システムの購入機能が利用できません。");
@@ -489,7 +491,6 @@ namespace UnityInAppPuchaser {
 					Result = PurchaseResult.Unknown;
 					break;
 			}
-
 			purchasing = false;
 		}
 
@@ -498,12 +499,10 @@ namespace UnityInAppPuchaser {
 			var validated = ValidateReceipt (eventArgs.purchasedProduct);
 			Inventory [eventArgs.purchasedProduct] = validated;
 			Debug.Log ($"Purchaser.ProcessPurchase {(validated ? "Validated" : "ValidationError")} {eventArgs.purchasedProduct.GetProperties ()}");
-
 			if (valid) {
 				Result = PurchaseResult.SUCCESS;
 				purchasing = false;
 			}
-
 			return (validated && eventArgs.purchasedProduct.definition.type == ProductType.Consumable) ? PurchaseProcessingResult.Pending : PurchaseProcessingResult.Complete;
 		}
 
@@ -570,8 +569,8 @@ namespace UnityInAppPuchaser {
 
 		/// <summary>Productによるアクセス</summary>
 		public bool this [Product product] {
-			get { return base [product.definition.id]; }
-			set { base [product.definition.id] = value; }
+			get => base [product.definition.id];
+			set => base [product.definition.id] = value;
 		}
 
 		/// <summary>Productによる存在確認</summary>

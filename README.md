@@ -11,7 +11,7 @@ tags: Unity UnityIAP Android iOS C#
 	- 動作する組み合わせ
 		- Unity 2021.3.23f1, com.unity.purchasing 4.7.0
 		- Unity 2021.3.27f1, com.unity.purchasing 4.8.0
-- Apple App Store、Google Play Store
+- Apple App Store、Google Play Store アカウント
 - この記事では、Unity IAPの一部機能を限定的に使用し、汎用性のない部分があります。
   - サーバレス、消費／非消費タイプ使用、購読タイプ未使用
 - この記事のソースは、実際のストアでテストしていますが、製品版での使用実績はありません。
@@ -24,16 +24,17 @@ tags: Unity UnityIAP Android iOS C#
 ### 公式ドキュメント
 - マニュアル
   - [Unity IAP](https://docs.unity3d.com/ja/current/Manual/UnityIAP.html)
-  - [In App Purchasing 4.3](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/manual/index.html)
+  - [In App Purchasing 4.8](https://docs.unity3d.com/Packages/com.unity.purchasing@4.8/manual/index.html)
 - スクリプトリファレンス
-  - [In App Purchasing 4.3](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/api/UnityEngine.Purchasing.UnityPurchasing.html)
+  - [In App Purchasing 4.8](https://docs.unity3d.com/Packages/com.unity.purchasing@4.8/api/UnityEngine.Purchasing.UnityPurchasing.html)
 
 # できること
 - Unity In-App Purchasing をスクリプトから使います。
+	- 購入、消費、リストア(iOS)
 - スクリプトレスで使うのでしたら、より簡易な方法が用意されています。公式ドキュメントや他の記事を参照してください。
 
 # 準備
-- ストアのアカウントが必要です。
+- ストアの開発アカウントが必要です。
 - アプリを登録してください。
 - アプリ内購入アイテムを登録してください。
 
@@ -80,15 +81,15 @@ var products = new [] {
 
 ### 初期化
 - 製品定義を渡して初期化を行います。
-  - `Purchaser.Init(products)`の形では、初期化を開始するのみでブロックされません。
-    - `Purchaser.Init(products, success => Debug.Log (success))`とすると、結果のコールバックを受けることができます。
-  - `var success = await Purchaser.InitAsync ()`とすれば、同期的に成否を得られます。
+  - `Purchaser.Initialize(products, null)`の形では、初期化を開始するのみでブロックされません。
+    - `Purchaser.Initialize(products, success => Debug.Log (success))`とすると、結果のコールバックを受けることができます。
+  - `var success = await Purchaser.InitializeAsync (products)`とすれば、同期的に成否を得られます。
 - 例えば、以下のように書くことで、初期化の完了を待って課金アイテム一覧を表示するようなことことが可能です。
   - この`Purchaser.Products`は、ストアから得た製品目録`IStoreController.products`を参照します。
 
 ```csharp:Purchaser.cs
 	private async Task CreateCatalog () {
-		if (await Purchaser.InitAsync (products)) {
+		if (await Purchaser.InitializeAsync (products)) {
 			Catalog.Create (CatalogHolder);
 			foreach (var product in Purchaser.Products.all) {
 				CatalogItem.Create (Catalog.ScrollRect.content, product);
@@ -123,26 +124,28 @@ foreach (var product in Purchaser.Products.all) {
 - ストアでの製品の有効/無効は、アプリの使用する製品定義に連動させ、緊急時以外は、ストア独自に製品を無効化しないようにしてください。
 
 ### 所有状態
-- 「非消費アイテムが購入済み」あるいは「消費アイテムが購入済みで未消費」であることを取得するには、`Purchaser.Inventory`を参照します。
+- 「非消費アイテムが購入済み」あるいは「消費アイテムが購入済みで未消費」であることを取得するには、`bool? Purchaser.IsStocked (Product product)`または`bool? Purchaser.IsStocked (string productID)`を使用します。
+	- 指定した製品が無効だったり、`Purchaser`が未初期化の場合は`null`を返します。
+- あるいは、`Purchaser.Inventory`を参照することもできます。
   - `Purchaser.Inventory`を書き換えて所有状態を変化させることはできません。外部から書き換えると不整合が生じます。
 - `Purchaser.Inventory [Product product]`または`Purchaser.Inventory [string productID]`で、所有状態を取得できます。
   - 存在しない製品を指定すると例外が発生します。
 - `Purchaser.Inventory.ContainsKey (Product product)`または`Purchaser.Inventory.ContainsKey (string productID)`で、製品の存在を確認できます。
 
 ### 購入
-- `Purchase (Product product)`または`Purchase (string productID)`により、課金処理が開始されます。
-  - `Purchase (Product product, Action<bool> onPurchased)`または`Purchase (string productID, Action<bool> onPurchased)`とすると、結果のコールバックを受けることができます。
-- `PurchaseAsync (Product product)`または`PurchaseAsync (string sku)`により、同期的に成否を得られます。
+- `Purchaser.Purchase (Product product)`または`Purchaser.Purchase (string productID)`により、課金処理が開始されます。
+  - `Purchaser.Purchase (Product product, Action<bool> onPurchased)`または`Purchaser.Purchase (string productID, Action<bool> onPurchased)`とすると、結果のコールバックを受けることができます。
+- `await Purchaser.PurchaseAsync (Product product)`または`await Purchaser.PurchaseAsync (string sku)`により、同期的に成否を得られます。
 - `Purchaser.PurchaseValid`をポーリングすることで、課金処理が進行中であることを確認できます。
   - ただし、課金処理を開始したものの、エラーのために進行中にならない場合もあります。
-- `Purchaser.result`により、直前の課金処理の失敗の理由を取得できます。
+- `Purchaser.Result`により、直前の課金処理の失敗の理由を取得できます。
 
 ### 購入の完了
 - 課金処理に成功すると、非消耗品では購入が完了し、消耗品では「購入済みで未消費(所有している)」状態になります。
   - 未消費状態は、アプリの中断時にも保持されます。
-- `ConfirmPendingPurchase (Product product)`または`ConfirmPendingPurchase (string productID)`で消耗品を消費できます。
+- `Purchaser.ConfirmPendingPurchase (Product product)`または`Purchaser.ConfirmPendingPurchase (string productID)`で消耗品を消費できます。
   - 消費に成功すると真が返されて「未所有」状態になります。
 
 ### 復元
-- `Restore (Action<bool, string> onRestored = null)`で、課金情報の復元を行い、結果のコールバックを得ることができます。
+- `Purchaser.Restore (Action<bool, string> onRestored = null)`で、課金情報の復元を行い、結果のコールバックを得ることができます。
   - Google Play Storeでは、何も処理されず、常に成功します。

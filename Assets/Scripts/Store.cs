@@ -43,28 +43,27 @@ public class Store : MonoBehaviour {
 	}
 
 	/// <summary>初期化とカタログの生成</summary>
-	private async void CreateCatalog (bool force = false) {
-		WaitIndicator.display = true;
+	private void CreateCatalog (bool force = false) {
 #if ALLOW_UIAP
-		if (!Purchaser.Valid) {
-			// 未初期化なら初期化完了を待機
-			await Purchaser.InitializeAsync (products, ready => {
-				InfoPanel.text = $"{Purchaser.Status}";
-			});
-		}
-		if (Purchaser.Valid && (Catalog.Count == null || force)) {
-			// 初期化できていて、未生成または強制なら、(再)生成
-			Catalog.Create (CatalogHolder, OnPushBuyButon, OnPushConsumeButton);
-			if (!force && Purchaser.Valid) {
+		if (Purchaser.Valid) { return; } // 初期化済み
+		WaitIndicator.display = true;
+		Purchaser.Initialize (products, ready => {
+			InfoPanel.text = $"{Purchaser.Status}";
+			if (WaitIndicator.display && (Purchaser.Status == PurchaseStatus.AVAILABLE || Purchaser.Status == PurchaseStatus.OFFLINE)) {
+				// オフラインの場合を含めて、いったんは初期化された
 				WaitIndicator.display = false;
 			}
-		}
+			if (Purchaser.Valid && (Catalog.Count == null || force)) {
+				// 初期化できていて、未生成または強制なら、(再)生成
+				Catalog.Create (CatalogHolder, OnPushBuyButon, OnPushConsumeButton);
+			}
+		});
 #endif
 	}
 
 #if ALLOW_UIAP
-	/// <summary>購入ボタン</summary>
-	public async void OnPushBuyButon (Product product) {
+    /// <summary>購入ボタン</summary>
+    public async void OnPushBuyButon (Product product) {
 		WaitIndicator.display = true;
 		await Purchaser.PurchaseAsync (product, success => {
             InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
@@ -84,10 +83,11 @@ public class Store : MonoBehaviour {
 	/// <summary>消費ボタン</summary>
 	public void OnPushConsumeButton (Product product) {
 		WaitIndicator.display = true;
-		var result = Purchaser.ConfirmPendingPurchase (product);
+		var success = Purchaser.ConfirmPendingPurchase (product) && Purchaser.IsStocked (product) == false;
+		InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
 		ModalDialog.Create (
 			transform.parent,
-			$"{product.metadata.shortTitle ()}の消費に{((result && !Purchaser.Inventory [product]) ? "成功" : "失敗")}しました。",
+			$"{product.metadata.shortTitle ()}の消費に{(success ? "成功" : "失敗")}しました。",
 			() => WaitIndicator.display = false
 		);
 	}
@@ -97,6 +97,7 @@ public class Store : MonoBehaviour {
 		if (!Purchaser.Valid) { return; } // 未初期化なら離脱
 		WaitIndicator.display = true;
 		Purchaser.Restore ((success, message) => {
+			InfoPanel.text = success ? "Restored" : "Failure";
 			if (success) {
 				// カタログを再生成
 				CreateCatalog (true);
