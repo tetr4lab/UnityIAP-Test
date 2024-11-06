@@ -4,12 +4,13 @@ tags: Unity UnityIAP Android iOS C#
 ---
 # 前提
 - Unity & Purchasing
-	- Unity 2021.3.40f1, 2022.3.36f1
-	- com.unity.purchasing 4.12.0
+	- Unity 2022.3.51f1
+	- com.unity.purchasing 4.12.2
 	- 動作する組み合わせ
 		- Unity 2021.3.23f1, com.unity.purchasing 4.7.0
 		- Unity 2021.3.27f1, com.unity.purchasing 4.8.0
         - Unity 2021.3.32f1, com.unity.purchasing 4.9.4
+        - Unity 2022.3.51f1, target SDK 35, com.unity.purchasing 4.12.2 (Billing Library 6)
 - Apple App Store、Google Play Store アカウント
 - この記事では、Unity IAPの一部機能を限定的に使用し、汎用性のない部分があります。
   - サーバレス、消費／非消費タイプ使用、購読タイプ未使用
@@ -46,6 +47,12 @@ tags: Unity UnityIAP Android iOS C#
 - メニュー`Services` > `In-App Purchasing` > `Receipt validation obfuscator...`で、レシート検証の(難読化された)コードを生成します。
   - ダイアログに表示される手順に従って処理を進めると、`Assets/Scripts/UnityPurchasing/generated/`にコードが生成されます。
   - [Receipt Obfuscation](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/manual/UnityIAPValidatingReceipts.html)
+
+#### 依存ライブラリ
+- `Package Manager` > `Add package from git URL...` で以下を入力します。
+```
+https://github.com/tetr4lab/Tetr4labNugetPackages.git?path=/Tetr4lab
+```
 
 ### ネームスペース
 - `UnityEngine.Purchasing`
