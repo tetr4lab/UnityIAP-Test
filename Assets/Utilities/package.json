@@ -1,0 +1,20 @@
+{
+    "name": "org.tetr4lab.utilities",
+    "version": "1.0.0",
+    "displayName": "Tetr4labUtilities",
+    "description": "Tetr4lab Utilities",
+    "unity": "2021.3",
+    "documentationUrl": "https://github.com/tetr4lab/UnityIAP-Test/",
+    "licenses": "MIT",
+    "dependencies": {},
+    "keywords": [
+        "Tetr4lab",
+        "Utilities",
+        "Unity"
+    ],
+    "author": {
+        "name": "tetr4lab.",
+        "email": "info@tetr4lab.org",
+        "url": "https://tetr4lab.org/"
+    }
+}
