@@ -14,6 +14,7 @@ using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Security;
 using UnityEngine.Purchasing.Extension;
 
+using Tetr4lab;
 using Tetr4lab.Utilities;
 
 namespace Tetr4lab.UnityInAppPuchaser {

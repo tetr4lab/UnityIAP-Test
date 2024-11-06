@@ -157,12 +157,12 @@
       },
       "url": "https://packages.unity.com"
     },
-    "org.tetr4lab.taskex": {
-      "version": "https://github.com/tetr4lab/AdMobApi.git?path=/Assets/TaskEx",
+    "org.tetr4lab": {
+      "version": "https://github.com/tetr4lab/Tetr4labNugetPackages.git?path=/Tetr4lab",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "33c7bdf5ca1cfb6d1dd53cf8ebefe0c5d8616610"
+      "hash": "661f21b417d5d7043b506a892b328766dd4d2bfa"
     },
     "com.unity.modules.ai": {
       "version": "1.0.0",
