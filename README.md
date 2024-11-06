@@ -4,8 +4,8 @@ tags: Unity UnityIAP Android iOS C#
 ---
 # 前提
 - Unity & Purchasing
-	- Unity 2021.3.32f1
-	- com.unity.purchasing 4.9.4
+	- Unity 2021.3.40f1, 2022.3.36f1
+	- com.unity.purchasing 4.12.0
 	- 動作する組み合わせ
 		- Unity 2021.3.23f1, com.unity.purchasing 4.7.0
 		- Unity 2021.3.27f1, com.unity.purchasing 4.8.0
