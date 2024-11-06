@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.Purchasing;
-using UnityInAppPuchaser;
+using Tetr4lab.UnityInAppPuchaser;
 
 /// <summary>表示用アイテム目録の要素</summary>
 public class CatalogItem : MonoBehaviour {

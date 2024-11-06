@@ -14,9 +14,9 @@ using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Security;
 using UnityEngine.Purchasing.Extension;
 
-using Tetr4lab;
+using Tetr4lab.Utilities;
 
-namespace UnityInAppPuchaser {
+namespace Tetr4lab.UnityInAppPuchaser {
 	/// <summary>IAPの利用可能状況</summary>
 	public enum PurchaseStatus {
 		NOTINIT = 0, // 未初期化状態`

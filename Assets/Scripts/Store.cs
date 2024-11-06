@@ -5,9 +5,9 @@ using UnityEngine;
 using UnityEngine.UI;
 #if ALLOW_UIAP
 using UnityEngine.Purchasing;
-using UnityInAppPuchaser;
+using Tetr4lab.UnityInAppPuchaser;
 #endif
-using Tetr4lab;
+using Tetr4lab.Utilities;
 
 /// <summary>ストア</summary>
 public class Store : MonoBehaviour {
