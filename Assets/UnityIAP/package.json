@@ -4,7 +4,7 @@
     "displayName": "UnityInAppPuchaser",
     "description": "Tried Unity IAP (Yet Another Purchaser.cs)",
     "unity": "2021.3",
-    "documentationUrl": "https://github.com/tetr4lab/UnityIAP-Test/",
+    "documentationUrl": "https://github.com/tetr4lab/UnityIAP-Test.git?path=/Assets/UnityIAP",
     "licenses": "MIT",
     "dependencies": {},
     "keywords": [

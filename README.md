@@ -17,11 +17,7 @@ tags: Unity UnityIAP Android iOS C#
 - この記事のソースは、実際のストアでテストしていますが、製品版での使用実績はありません。
   - ソース中のIDは実際と異なり、そのまま使用できるものではありません。
 
-## リソース
-### このプロジェクト
-- [ソース (GitHub)](https://github.com/tetr4lab/UnityIAP-Test)
-
-### 公式ドキュメント
+## 公式ドキュメント
 - マニュアル
   - [Unity IAP](https://docs.unity3d.com/ja/current/Manual/UnityIAP.html)
   - [In App Purchasing 4.9](https://docs.unity3d.com/Packages/com.unity.purchasing@4.9/manual/index.html)
@@ -48,10 +44,20 @@ tags: Unity UnityIAP Android iOS C#
   - ダイアログに表示される手順に従って処理を進めると、`Assets/Scripts/UnityPurchasing/generated/`にコードが生成されます。
   - [Receipt Obfuscation](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/manual/UnityIAPValidatingReceipts.html)
 
-#### 依存ライブラリ
+#### このライブラリ
 - `Package Manager` > `Add package from git URL...` で以下を入力します。
 ```
+https://github.com/tetr4lab/UnityIAP-Test.git?path=/Assets/UnityIAP
+```
+
+#### 依存ライブラリ
+- `Package Manager` > `Add package from git URL...` で、順に以下を入力します。
+```
 https://github.com/tetr4lab/Tetr4labNugetPackages.git?path=/Tetr4lab
+```
+
+```
+https://github.com/tetr4lab/Tetr4labUnityUtilities.git?path=/Assets/Utilities
 ```
 
 ### ネームスペース
