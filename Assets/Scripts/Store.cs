@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 #if ALLOW_UIAP
 using UnityEngine.Purchasing;
-using Tetr4lab.UnityInAppPuchaser;
+using Tetr4lab.UnityEngine.InAppPuchaser;
 #endif
 using Tetr4lab.UnityEngine;
 

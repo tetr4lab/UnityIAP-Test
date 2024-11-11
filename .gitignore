@@ -75,7 +75,7 @@ crashlytics-build.properties
 # Temporary auto-generated Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
-/[Aa]ssets/Scripts/UnityPurchasing**
+/[Aa]ssets/Scripts/UnityPurchasing/generated**
 
 # IL2CPP build artifacts should be ignored
 /*BackUpThisFolder_ButDontShipItWithYourGame

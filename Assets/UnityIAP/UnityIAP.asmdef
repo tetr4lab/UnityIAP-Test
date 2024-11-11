@@ -6,13 +6,13 @@
         "Unity.Services.Core.Environments",
         "org.tetr4lab",
         "org.tetr4lab.unity.utilities",
-        "IAPResolver",
         "Purchasing.Common",
         "UnityEngine.Purchasing",
         "UnityEngine.Purchasing.Security",
         "UnityEngine.Purchasing.SecurityCore",
         "UnityEngine.Purchasing.SecurityStub",
-        "UnityEngine.Purchasing.Stores"
+        "UnityEngine.Purchasing.Stores",
+        "UnityPurchasing.Generated"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

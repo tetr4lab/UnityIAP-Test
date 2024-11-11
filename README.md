@@ -37,12 +37,36 @@ tags: Unity UnityIAP Android iOS C#
 # 使い方
 
 ### 導入
+- パッケージ「In App Purchasing (`com.unity.purchasing`)」が必要です。
+  - あらかじめ、パッケージマネージャで導入してください。
 - プロジェクトにサービスを導入します。
-  - `Project Settings` > `Services` > `In-App Purchasing` で「ON」にします。
-  - [Getting Started](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/manual/GettingStarted.html)
-- メニュー`Services` > `In-App Purchasing` > `Receipt validation obfuscator...`で、レシート検証の(難読化された)コードを生成します。
-  - ダイアログに表示される手順に従って処理を進めると、`Assets/Scripts/UnityPurchasing/generated/`にコードが生成されます。
-  - [Receipt Obfuscation](https://docs.unity3d.com/Packages/com.unity.purchasing@4.3/manual/UnityIAPValidatingReceipts.html)
+  - `Project Settings` > `Services` > `In-App Purchasing` を「ON」にします。
+  - `Receipt Obfuscator`で、レシート検証のコードを生成します。
+  - 処理を進めると、`Assets/Scripts/UnityPurchasing/generated/`にコードが生成されます。
+
+#### 生成コードにアセンブリを定義
+- `Assets/Scripts/UnityPurchasing/generated`の生成後、`Assets/Scripts/UnityPurchasing`に`UnityPurchasingGenerated.asmdef`(Assembly Definition)を生成してください。
+- この情報を使って、外部のアセンブリから生成コードが参照されます。
+```asmdef:UnityPurchasingGenerated.asmdef
+{
+    "name": "UnityPurchasing.Generated",
+    "rootNamespace": "UnityEngine.Purchasing.Security",
+    "references": [
+        "UnityEngine.Purchasing.Security",
+        "UnityEngine.Purchasing.SecurityCore",
+        "UnityEngine.Purchasing.SecurityStub"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
+```
 
 #### このライブラリ
 - `Package Manager` > `Add package from git URL...` で以下を入力します。

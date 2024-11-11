@@ -17,7 +17,7 @@ using UnityEngine.Purchasing.Extension;
 using Tetr4lab;
 using Tetr4lab.UnityEngine;
 
-namespace Tetr4lab.UnityInAppPuchaser {
+namespace Tetr4lab.UnityEngine.InAppPuchaser {
 	/// <summary>IAPの利用可能状況</summary>
 	public enum PurchaseStatus {
 		NOTINIT = 0, // 未初期化状態`
@@ -306,7 +306,7 @@ namespace Tetr4lab.UnityInAppPuchaser {
 #endif
                 return true;
 			} catch (IAPSecurityException ex) {
-				UnityEngine.Debug.LogError ($"Purchaser.validateReceipt Invalid receipt {product.definition.id}, not unlocking content. {ex}");
+                global::UnityEngine.Debug.LogError ($"Purchaser.validateReceipt Invalid receipt {product.definition.id}, not unlocking content. {ex}");
 				return false;
 			}
 #endif
