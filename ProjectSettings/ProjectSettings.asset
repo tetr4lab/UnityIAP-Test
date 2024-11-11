@@ -836,7 +836,7 @@ PlayerSettings:
   webGLMemoryGeometricGrowthCap: 96
   webGLPowerPreference: 2
   scriptingDefineSymbols:
-    Android: ALLOW_UIAP
+    Android: ALLOW_UIAP;DEBUGLOG
     Standalone: ALLOW_UIAP
     iPhone: ALLOW_UIAP
   additionalCompilerArguments: {}
