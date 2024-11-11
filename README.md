@@ -49,6 +49,10 @@ tags: Unity UnityIAP Android iOS C#
 ```
 https://github.com/tetr4lab/UnityIAP-Test.git?path=/Assets/UnityIAP
 ```
+- 以下のネームスペースを使用します。
+```csharp
+using Tetr4lab.UnityEngine.InAppPuchaser;
+```
 
 #### 依存ライブラリ
 - `Package Manager` > `Add package from git URL...` で、順に以下を入力します。

@@ -14,7 +14,7 @@
     "com.unity.ugui": "1.0.0",
     "com.unity.xr.legacyinputhelpers": "2.1.11",
     "org.tetr4lab": "https://github.com/tetr4lab/Tetr4labNugetPackages.git?path=/Tetr4lab",
-    "org.tetr4lab.utilities": "https://github.com/tetr4lab/Tetr4labUnityUtilities.git?path=/Assets/Utilities",
+    "org.tetr4lab.unity.utilities": "https://github.com/tetr4lab/Tetr4labUnityUtilities.git?path=/Assets/Utilities",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.animation": "1.0.0",

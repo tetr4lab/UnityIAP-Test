@@ -1,11 +1,11 @@
 {
-    "name": "org.tetr4lab.unityiap",
-    "rootNamespace": "Tetr4lab.UnityInAppPuchaser",
+    "name": "org.tetr4lab.unity.iap",
+    "rootNamespace": "Tetr4lab.UnityEngine.InAppPuchaser",
     "references": [
         "Unity.Services.Core",
         "Unity.Services.Core.Environments",
         "org.tetr4lab",
-        "org.tetr4lab.utilities",
+        "org.tetr4lab.unity.utilities",
         "IAPResolver",
         "Purchasing.Common",
         "UnityEngine.Purchasing",

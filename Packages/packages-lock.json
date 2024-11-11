@@ -164,12 +164,12 @@
       "dependencies": {},
       "hash": "661f21b417d5d7043b506a892b328766dd4d2bfa"
     },
-    "org.tetr4lab.utilities": {
+    "org.tetr4lab.unity.utilities": {
       "version": "https://github.com/tetr4lab/Tetr4labUnityUtilities.git?path=/Assets/Utilities",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "c791e8765140ced8ccf12504a566e54b1f42d68e"
+      "hash": "0b9876e4d83631f073ca25dc7c881a1e5bf15226"
     },
     "com.unity.modules.ai": {
       "version": "1.0.0",

@@ -7,7 +7,7 @@ using UnityEngine.UI;
 using UnityEngine.Purchasing;
 using Tetr4lab.UnityInAppPuchaser;
 #endif
-using Tetr4lab.Utilities;
+using Tetr4lab.UnityEngine;
 
 /// <summary>ストア</summary>
 public class Store : MonoBehaviour {

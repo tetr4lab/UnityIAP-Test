@@ -1,5 +1,5 @@
 {
-    "name": "org.tetr4lab.unityiap",
+    "name": "org.tetr4lab.unity.iap",
     "version": "1.0.0",
     "displayName": "UnityInAppPuchaser",
     "description": "Tried Unity IAP (Yet Another Purchaser.cs)",

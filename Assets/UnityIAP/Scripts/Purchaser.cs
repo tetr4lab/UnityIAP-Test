@@ -15,7 +15,7 @@ using UnityEngine.Purchasing.Security;
 using UnityEngine.Purchasing.Extension;
 
 using Tetr4lab;
-using Tetr4lab.Utilities;
+using Tetr4lab.UnityEngine;
 
 namespace Tetr4lab.UnityInAppPuchaser {
 	/// <summary>IAPの利用可能状況</summary>

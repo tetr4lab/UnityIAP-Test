@@ -70,12 +70,12 @@ sysinfo.txt
 crashlytics-build.properties
 
 # Packed Addressables
-/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata**
 
 # Temporary auto-generated Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
-/[Aa]ssets/Scripts/UnityPurchasing/
+/[Aa]ssets/Scripts/UnityPurchasing**
 
 # IL2CPP build artifacts should be ignored
 /*BackUpThisFolder_ButDontShipItWithYourGame
