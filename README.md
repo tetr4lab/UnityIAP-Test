@@ -4,13 +4,9 @@ tags: Unity UnityIAP Android iOS C#
 ---
 # 前提
 - Unity & Purchasing
-	- Unity 2022.3.51f1
-	- com.unity.purchasing 4.12.2
-	- 動作する組み合わせ
-		- Unity 2021.3.23f1, com.unity.purchasing 4.7.0
-		- Unity 2021.3.27f1, com.unity.purchasing 4.8.0
-        - Unity 2021.3.32f1, com.unity.purchasing 4.9.4
-        - Unity 2022.3.51f1, target SDK 35, com.unity.purchasing 4.12.2 (Billing Library 6)
+  - Unity 6000.0.56f1
+  - com.unity.purchasing 4.13.0
+    - IAP 5.x では動作しません。 → [Upgrade to IAP version 5](https://docs.unity.com/ugs/en-us/manual/iap/manual/upgrade-to-iap-v5)
 - Apple App Store、Google Play Store アカウント
 - この記事では、Unity IAPの一部機能を限定的に使用し、汎用性のない部分があります。
   - サーバレス、消費／非消費タイプ使用、購読タイプ未使用
@@ -20,9 +16,9 @@ tags: Unity UnityIAP Android iOS C#
 ## 公式ドキュメント
 - マニュアル
   - [Unity IAP](https://docs.unity3d.com/ja/current/Manual/UnityIAP.html)
-  - [In App Purchasing 4.9](https://docs.unity3d.com/Packages/com.unity.purchasing@4.9/manual/index.html)
+  - [In App Purchasing 4.13](https://docs.unity3d.com/Packages/com.unity.purchasing@4.13/manual/index.html)
 - スクリプトリファレンス
-  - [In App Purchasing 4.9](https://docs.unity3d.com/Packages/com.unity.purchasing@4.9/api/UnityEngine.Purchasing.UnityPurchasing.html)
+  - [In App Purchasing 4.13](https://docs.unity3d.com/Packages/com.unity.purchasing@4.13/api/UnityEngine.Purchasing.UnityPurchasing.html)
 
 # できること
 - Unity In-App Purchasing をスクリプトから使います。

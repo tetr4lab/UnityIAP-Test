@@ -43,7 +43,7 @@ public class WaitIndicator : MonoBehaviour {
 	/// <returns>生成されたインスタンス</returns>
 	public static WaitIndicator Create (Transform parent = null, string message = null) {
 		prefab ??= Resources.Load<GameObject> ("WaitIndicator");
-		canvas ??= FindObjectOfType<Canvas> ()?.transform;
+		canvas ??= FindFirstObjectByType<Canvas> ()?.transform;
 		if (instance) {
 			Destroy (instance.gameObject);
 			instance = null;
