@@ -39,7 +39,7 @@ public class Catalog : MonoBehaviour {
 
 	private void init (UnityAction<Product> onPushBuyButton, UnityAction<Product> onPushConsumeButton) {
 		ScrollRect = GetComponent<ScrollRect> ();
-		foreach (var product in Purchaser.Products.all) {
+		foreach (var product in Purchaser.Products) {
 			CatalogItem.Create (ScrollRect.content, product, onPushBuyButton, onPushConsumeButton);
 		}
 	}

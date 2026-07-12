@@ -2,9 +2,9 @@
     "name": "UnityPurchasing.Generated",
     "rootNamespace": "UnityEngine.Purchasing.Security",
     "references": [
-        "UnityEngine.Purchasing.Security",
-        "UnityEngine.Purchasing.SecurityCore",
-        "UnityEngine.Purchasing.SecurityStub"
+        "Unity.Purchasing.Security",
+        "Unity.Purchasing.SecurityCore",
+        "Unity.Purchasing.SecurityStub"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

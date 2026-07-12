@@ -1,12 +1,14 @@
 {
     "name": "org.tetr4lab.unity.iap",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "displayName": "UnityInAppPuchaser",
     "description": "Tried Unity IAP (Yet Another Purchaser.cs)",
-    "unity": "2021.3",
+    "unity": "6000.0",
     "documentationUrl": "https://github.com/tetr4lab/UnityIAP-Test.git?path=/Assets/UnityIAP",
     "licenses": "MIT",
-    "dependencies": {},
+    "dependencies": {
+        "com.unity.purchasing": "5.4.0"
+    },
     "keywords": [
         "IAP",
         "Unity"

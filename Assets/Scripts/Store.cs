@@ -45,7 +45,7 @@ public class Store : MonoBehaviour {
 	/// <summary>初期化とカタログの生成</summary>
 	private void CreateCatalog (bool force = false) {
 #if ALLOW_UIAP
-		if (Purchaser.Valid) { return; } // 初期化済み
+		if (Purchaser.IsValid) { return; } // 初期化済み
 		WaitIndicator.display = true;
 		Purchaser.Initialize (products, ready => {
 			InfoPanel.text = $"{Purchaser.Status}";
@@ -53,7 +53,7 @@ public class Store : MonoBehaviour {
 				// オフラインの場合を含めて、いったんは初期化された
 				WaitIndicator.display = false;
 			}
-			if (Purchaser.Valid && (Catalog.Count == null || force)) {
+			if (Purchaser.IsValid && (Catalog.Count == null || force)) {
 				// 初期化できていて、未生成または強制なら、(再)生成
 				Catalog.Create (CatalogHolder, OnPushBuyButon, OnPushConsumeButton);
 			}
@@ -68,13 +68,13 @@ public class Store : MonoBehaviour {
 		await Purchaser.PurchaseAsync (product, success => {
             InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
         });
-		if (Purchaser.Result == PurchaseResult.UserCancelled) {
-			// ユーザによるキャンセル (ただし、エディタでは挙動が異なる)
-			WaitIndicator.display = false;
+		if (Purchaser.Result == PurchaseFailureReason.UserCancelled) {
+            // ユーザによるキャンセル(UserCancelledでなくOrderCancelledが戻る)
+            WaitIndicator.display = false;
 		} else {
 			ModalDialog.Create (
 				transform.parent,
-				$"{Purchaser.Result}\n{product.metadata.shortTitle ()}の購入に{((Purchaser.Result == PurchaseResult.SUCCESS) ? "成功" : "失敗")}しました。",
+				$"{Purchaser.Result}\n{product.metadata.shortTitle ()}の購入に{((Purchaser.Result.IsSuccess) ? "成功" : "失敗")}しました。",
 				() => WaitIndicator.display = false
 			);
 		}
@@ -93,10 +93,10 @@ public class Store : MonoBehaviour {
 	}
 
 	/// <summary>復元ボタン</summary>
-	public void OnPushRestoreButton () {
-		if (!Purchaser.Valid) { return; } // 未初期化なら離脱
+	public async void OnPushRestoreButton () {
+		if (!Purchaser.IsValid) { return; } // 未初期化なら離脱
 		WaitIndicator.display = true;
-		Purchaser.Restore ((success, message) => {
+		await Purchaser.RestoreAsync ((success, message) => {
 			InfoPanel.text = success ? "Restored" : "Failure";
 			if (success) {
 				// カタログを再生成
@@ -112,7 +112,7 @@ public class Store : MonoBehaviour {
 
 	/// <summary>駆動</summary>
 	private void Update () {
-        if (!Purchaser.Valid && Purchaser.Status == PurchaseStatus.OFFLINE && Tetr4labUtility.IsNetworkAvailable) {
+        if (!Purchaser.IsValid && Purchaser.Status == PurchaseStatus.OFFLINE && Tetr4labUtility.IsNetworkAvailable) {
 			// オンラインになったので遅延初期化を実施
 			CreateCatalog ();
 		}

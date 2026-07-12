@@ -1,0 +1,5 @@
+﻿<Solution>
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="UnityPurchasing.Generated.csproj" />
+  <Project Path="org.tetr4lab.unity.iap.csproj" />
+</Solution>

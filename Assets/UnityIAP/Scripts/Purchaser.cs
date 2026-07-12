@@ -1,524 +1,553 @@
-#define UNITY_PURCHASING_4_8_0_OR_HIGHER
-#define UNITY_PURCHASING_4_6_0_OR_HIGHER
+#nullable enable
 #if ALLOW_UIAP
 using System;
-using System.Threading.Tasks;
-using System.Text.RegularExpressions;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Tetr4lab;
+using Tetr4lab.UnityEngine;
 using Unity.Services.Core;
 using Unity.Services.Core.Environments;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Security;
-using UnityEngine.Purchasing.Extension;
-
-using Tetr4lab;
-using Tetr4lab.UnityEngine;
 
 namespace Tetr4lab.UnityEngine.InAppPuchaser {
-	/// <summary>IAPの利用可能状況</summary>
-	public enum PurchaseStatus {
-		NOTINIT = 0, // 未初期化状態`
-		AVAILABLE, // 利用可能
-		UNAVAILABLE, // 利用不能
-		OFFLINE, // オフライン
-	}
+    /// <summary>IAPの利用可能状況</summary>
+    public enum PurchaseStatus {
+        /// <summary>未初期化状態</summary>
+        NOTINIT = 0,
+        /// <summary>利用可能</summary>
+        AVAILABLE,
+        /// <summary>利用不能</summary>
+        UNAVAILABLE,
+        /// <summary>オフライン</summary>
+        OFFLINE,
+    }
 
-	/// <summary>購入の結果</summary>
-	public enum PurchaseResult {
-		ERROR = -1,					// 購入開始失敗
-		SUCCESS = 0,				// 購入成功
-
-		PurchasingUnavailable,		// システムの購入機能が利用できません。
-		ExistingPurchasePending,	// 新たに購入をリクエストしましたが、すでに購入処理中でした。
-		ProductUnavailable,			// ストアで購入できる商品ではありません。
-		SignatureInvalid,			// 課金レシートのシグネチャ検証に失敗しました。
-		UserCancelled,				// ユーザは購入の続行よりキャンセルを選びました。
-		PaymentDeclined,			// 支払いに問題がありました。
-		DuplicateTransaction,		// 重複トランザクションエラー.
-		Unknown,					// 認識不能な問題のある購入のすべて。
-		NotValid,					// 初期化できていない
-		Disconnected,				// ネット接続がない
-	}
+    /// <summary>購入の結果</summary>
+    /// <remarks>PurchaseFailureReasonと独自の定数の参照と代入が可能な列挙型のように振る舞う</remarks>
+    public class PurchaseResult {
+        /// <summary>結果</summary>
+        public int Result { get; private set; }
+        /// <summary>失敗の理由</summary>
+        public PurchaseFailureReason Reason { get; private set; }
+        /// <summary>成否</summary>
+        public bool IsSuccess => Result == SUCCESS || Result == Pending;
+        /// <summary>購入失敗</summary>
+        public static int ERROR = -1;
+        /// <summary>購入成功</summary>
+        public static int SUCCESS = 0;
+        /// <summary>進行中</summary>
+        public static int Purchasing = 1;
+        /// <summary>保留中(消費待ち)</summary>
+        public static int Pending = 2;
+        /// <summary>初期化できていない</summary>
+        public static int NotValid = 3;
+        /// <summary>ネット接続がない</summary>
+        public static int Disconnected = 4;
+        /// <summary>結果の取得</summary>
+        public static implicit operator int (PurchaseResult x) => x.Result;
+        /// <summary>結果の代入</summary>
+        public static implicit operator PurchaseResult (int x) => new PurchaseResult { Result = x, Reason = PurchaseFailureReason.Unknown, };
+        /// <summary>理由の取得</summary>
+        public static implicit operator PurchaseFailureReason (PurchaseResult x) => x.Result == ERROR ? x.Reason : PurchaseFailureReason.Unknown;
+        /// <summary>理由の代入</summary>
+        public static implicit operator PurchaseResult (PurchaseFailureReason x) => new PurchaseResult { Result = ERROR, Reason = x, };
+        /// <summary>初期値</summary>
+        public PurchaseResult () { Result = SUCCESS; Reason = PurchaseFailureReason.Unknown; }
+        /// <summary>結果の名称</summary>
+        private static readonly string [] resultName = { "成功", "進行中", "保留中", "未初期化", "切断", };
+        /// <summary>文字列化</summary>
+        public override string ToString () => Result == ERROR ? $"失敗: {Reason}" : Result < resultName.Length ? resultName [Result] : "規定外";
+    }
 
     /// <summary>課金処理</summary>
-#if UNITY_PURCHASING_4_8_0_OR_HIGHER
-	public class Purchaser : IDetailedStoreListener {
-#else
-    public class Purchaser : IStoreListener {
-#endif
-
+    /// <remarks>
+    /// 初期化フロー
+    ///     Connect() 接続
+    ///         ├─ OnStoreConnected -> 接続完了
+    ///         │   └─ FetchProducts() 目録取得
+    ///         │       ├─ OnProductsFetched -> 目録取得完了
+    ///         │       │   └─ FetchPurchases() 注文取得
+    ///         │       │       ├─ OnPurchasesFetched -> 注文取得完了(初期化完了)
+    ///         │       │       └─ OnPurchasesFetchFailed -> 注文取得失敗
+    ///         │       └─ OnProductsFetchFailed -> 目録取得失敗
+    ///         └─ OnStoreDisconnected -> 接続失敗
+    /// 購入フロー
+    ///     PurchaseProduct() 発注
+    ///         ├─ OnPurchaseDeferred -> 待機(時間差でOnPurchasePendingが呼ばれる)
+    ///         ├─ OnPurchasePending 受付(確定可能)
+    ///         │   │  権利付与 (消費財ならアプリへ制御を戻す)
+    ///         │   └─ ConfirmPurchase() 確定 (消耗品の消費)
+    ///         │       └─ OnPurchaseConfirmed 結果
+    ///         │           ├─ ConfirmedOrder -> 購入完了(成功)
+    ///         │           └─ FailedOrder -> 確定失敗
+    ///         └─ OnPurchaseFailed -> 発注失敗
+    /// </remarks>
+    public class Purchaser {
 		#region Static
 		/// <summary>シングルトン</summary>
-		private static Purchaser instance;
+		private static Purchaser? instance;
 
-		/// <summary>所有目録 製品の課金状況一覧、消費タイプは未消費を表す</summary>
-		public static Inventory Inventory { get; private set; }
+        /// <summary>所有目録 製品の課金状況一覧、消費タイプは未消費を表す</summary>
+        public static Inventory Inventory { get; private set; } = new ();
 
-		/// <summary>有効 初期化が完了している</summary>
-		public static bool Valid => (instance != null && instance.valid);
+        /// <summary>有効 初期化が完了している</summary>
+        public static bool IsValid => instance is not null && Status == PurchaseStatus.AVAILABLE;
 
 		/// <summary>初期化状況</summary>
 		public static PurchaseStatus Status { get; private set; } = PurchaseStatus.NOTINIT;
 
-		/// <summary>製品目録 初期化時の製品IDに対してストアから得た情報</summary>
-		public static ProductCollection Products => Valid ? instance.controller.products : null;
+        /// <summary>ストアから得た製品目録</summary>
+        public static List<Product> Products { get; private set; } = new ();
 
-		/// <summary>有効 購入が完了している</summary>
-		public static bool PurchaseValid => Valid && instance.purchasing == false;
+        /// <summary>処理中</summary>
+        public static bool IsPurchasing => IsValid && instance!.isPurchasing;
 
         /// <summary>IDから製品を得る</summary>
         /// <param name="productID">製品ID</param>
         /// <returns>製品</returns>
-        public static Product Product (string productID) => !string.IsNullOrEmpty (productID) && Valid ? instance.controller.products.WithID (productID) : null;
+        public static Product? Product (string productID) => !string.IsNullOrEmpty (productID) && IsValid ? Products.FirstOrDefault (x => x.uSku == productID) : null;
 
-        /// <summary>購入失敗の理由</summary>
-        public static PurchaseResult Result { get; private set; }
+        /// <summary>購入の結果</summary>
+        public static PurchaseResult Result { get; private set; } = new ();
 
         /// <summary>初期化通過時の処理 (複数の実行機会)</summary>
-        private static Action<bool> onInitialized;
+        //private static Action<bool>? onInitialized;
 
         /// <summary>クラスを初期化を開始してコールバックを得る (ノンブロック)</summary>
         /// <param name="products">製品定義</param>
         /// <param name="onInitialized">完了時コールバックハンドラ</param>
-        public static void Initialize (IEnumerable<ProductDefinition> products, Action<bool> onInitialized) => _ = InitializeAsync (products, onInitialized);
+        public static async void Initialize (IEnumerable<ProductDefinition> products, Action<bool> onInitialized) {
+            await InitializeAsync (products, onInitialized);
+        }
 
-        /// <summary>製品目録キャッシュ</summary>
-        private static IEnumerable<ProductDefinition> _products = null;
+        /// <summary>初期化完了通知</summary>
+        private static Action<bool>? OnInitialized { get; set; }
 
-        /// <summary>
-        /// クラスを初期化して結果を得る
-        ///   クラスはシングルトンとして振る舞います。
-        ///   既に初期化に成功している場合の再初期化はできません。
-        ///     初回初期化時にオフラインだった場合は、オンラインになってから引数なしで呼ぶことで初期化を完了できます。
-        ///     製品定義や完了時コールバックハンドラの上書きはできません。
-        ///   `Status == PurchaseStatus.OFFLINE`の場合もコールバックがあります。
-        /// </summary>
+        /// <summary>クラスを初期化して結果を得る</summary>
+        /// <remarks>
+        /// クラスはシングルトンとして振る舞います。<br/>
+        /// 既に初期化済みの場合に製品定義を再度渡すと再初期化を試行します。<br/>
+        /// 初回初期化時にオフラインだった場合は、オンラインになってから引数なしで呼ぶことで初期化を完了できます。
+        /// (製品定義や完了時コールバックハンドラの上書きはできません。)<br/>
+        /// `Status != PurchaseStatus.NOTINIT`の場合にコールバックがあります。<br/>
+        /// </remarks>
         /// <param name="products">製品定義</param>
         /// <param name="onInitialized">完了時コールバックハンドラ</param>
-        /// <returns>結果</returns>
-        public static async Task<bool> InitializeAsync (IEnumerable<ProductDefinition> products = null, Action<bool> onInitialized = null) {
-			// IAPを初期化する
-			products ??= _products;
-			Purchaser.onInitialized ??= onInitialized;
-            var collection = products as ICollection<ProductDefinition>;
-            if (collection == null || collection.Count < 1) {
-                Debug.LogWarning ("IAPが初期化できない");
+        /// <returns>成否</returns>
+        public static async Task<bool> InitializeAsync (IEnumerable<ProductDefinition>? products = null, Action<bool>? onInitialized = null) {
+            Debug.Log ($"初期化({Status}): [{products?.Count () ?? 0}] {onInitialized is not null}");
+            if (products is not null && IsValid) {
+                // 再初期化要求
+                instance = null;
+                Status = PurchaseStatus.NOTINIT;
+            }
+            products ??= instance?.productsDefinitions ?? new ();
+            onInitialized ??= OnInitialized;
+            OnInitialized = onInitialized;
+            // IAPを初期化する
+            var collection = products.ToList ();
+            if (IsValid) {
+                Debug.LogWarning ("既に初期化済み");
+                onInitialized?.Invoke (true);
+            } else if (collection.Count < 1) {
+                Debug.LogWarning ("製品定義が空");
                 Status = PurchaseStatus.UNAVAILABLE;
                 onInitialized?.Invoke (false);
             } else if (!Tetr4labUtility.IsNetworkAvailable) {
                 Debug.LogWarning ("インターネットに接続していない");
-                if (Valid) { // 既に一度は初期化されている
-                } else {
-                    Status = PurchaseStatus.OFFLINE;
-                    onInitialized?.Invoke (false);
-                }
+                Status = PurchaseStatus.OFFLINE;
+                onInitialized?.Invoke (false);
             } else {
-#if UNITY_ANDROID
-                if (instance != null) { instance = null; }
-#endif
-                if (instance == null || Status != PurchaseStatus.AVAILABLE) {
-                    // UnityPurchasingを初期化する前にUnityServicesを初期化する必要がある
-                    try {
-                        var options = new InitializationOptions ().SetEnvironmentName ("production");
-                        await UnityServices.InitializeAsync (options);
-                    }
-                    catch (Exception exception) {
-						Debug.LogError ($"An error occurred during services initialization. {exception}");
-						instance = null;
-						Status = PurchaseStatus.UNAVAILABLE;
-						onInitialized?.Invoke (false);
-						return false;
-					}
-                    instance = new Purchaser (products);
-                    // 初期化完了を待つ
-                    await TaskEx.DelayUntil (() => Status != PurchaseStatus.NOTINIT);
+                try {
+                    // Servicesを初期化
+                    var options = new InitializationOptions ().SetEnvironmentName ("production");
+                    await UnityServices.InitializeAsync (options);
+                    // IAPを初期化
+                    instance = new Purchaser (collection);
+                    await instance.ConnectAsync ();
+                    onInitialized?.Invoke (IsValid);
+                }
+                catch (Exception exception) {
+					Debug.LogError ($"An error occurred during services initialization. {exception.Message}\n{exception.StackTrace}");
+					instance = null;
+					Status = PurchaseStatus.UNAVAILABLE;
+					onInitialized?.Invoke (false);
+					return false;
+				}
+            }
+			return IsValid;
+		}
+
+        /// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
+        public static bool ConfirmPendingPurchase (string productId) => IsValid ? instance!.ConfirmPurchase (productId) : false;
+
+        /// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
+        public static bool ConfirmPendingPurchase (Product product) => ConfirmPendingPurchase (product.uSku);
+
+		/// <summary>復元 課金情報の復元を行い、失敗を含めて結果のコールバックを得る</summary>
+		public static async Task<bool> RestoreAsync (Action<bool, string?>? onRestored = null) {
+			if (IsValid && Application.platform == RuntimePlatform.IPhonePlayer) {
+                instance!.RestoreTransactions (onRestored);
+                await TaskEx.DelayWhile (() => IsPurchasing); // 処理完了を待つ
+                return instance!.RestrationResult;
+            } else {
+                onRestored?.Invoke (false, $"不適合: {Application.platform}");
+                return false;
+			}
+		}
+
+        /// <summary>所有/未消費の確認</summary>
+        public static bool IsStocked (string productId) => IsValid && (instance!.PendingOrder.ContainsKey (productId) || Inventory.Contains (productId));
+
+        /// <summary>所有/未消費の確認</summary>
+        public static bool IsStocked (Product product) => IsStocked (product.uSku);
+
+        /// <summary>発注</summary>
+        /// <remarks>消耗品は事後に別途消費する</remarks>
+        /// <param name="product">製品</param>
+        /// <param name="onPurchased">完了時コールバックハンドラ</param>
+        /// <returns>成否</returns>
+        public static Task<bool> PurchaseAsync (Product product, Action<bool>? onPurchased = null)
+            => PurchaseAsync (product.uSku, onPurchased);
+
+        /// <summary>発注</summary>
+        /// <remarks>消耗品は事後に別途消費する</remarks>
+        /// <param name="productId">製品ID</param>
+        /// <param name="onPurchased">完了時コールバックハンドラ</param>
+        /// <returns>成否</returns>
+        public static async Task<bool> PurchaseAsync (string productId, Action<bool>? onPurchased = null) {
+			Debug.Log ($"PurchaseAsync ({productId})");
+            if (!IsValid) {
+                // 初期化できていないので再初期化
+                await InitializeAsync ();
+            }
+            if (IsValid) {
+                if (instance!.Purchase (productId)) {
+                    await TaskEx.DelayWhile (() => IsPurchasing); // 購入処理完了(保留を含む)を待つ
+                    var success = Result.IsSuccess;
+                    onPurchased?.Invoke (success);
+                    return success;
                 }
             }
-			var ready = Valid && Status == PurchaseStatus.AVAILABLE;
-			_products = ready ? null : products; // 未完了ならキャッシュ
-			return ready;
-		}
+            return false;
+        }
 
-		/// <summary>所有検証 有効なレシートが存在する</summary>
-		private static bool possession (Product product) {
-			return product.hasReceipt && ValidateReceipt (product);
-		}
-
-		/// <summary>レシート検証</summary>
-		public static bool ValidateReceipt (string productID) => ValidateReceipt (Product (productID));
-
-		/// <summary>レシート検証</summary>
-		public static bool ValidateReceipt (Product product) {
-			return product != null && Valid && instance.validateReceipt (product);
-		}
-
-		/// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-		public static bool ConfirmPendingPurchase (string productID) => ConfirmPendingPurchase (Product (productID));
-
-		/// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-		public static bool ConfirmPendingPurchase (Product product) {
-			if (product != null && Valid) {
-				return instance.confirmPendingPurchase (product);
-			}
-			return false;
-		}
-
-		/// <summary>復元 課金情報の復元を行い、結果のコールバックを得ることができる</summary>
-		public static void Restore (Action<bool, string> onRestored = null) {
-			if (Valid) {
-				instance.restore (onRestored);
-			} else {
-				onRestored?.Invoke (false, null);
-			}
-		}
-
-		/// <summary>所有の確認</summary>
-		/// <param name="productID">製品ID</param>
-		/// <returns>製品の所有状態、製品が存在しなければnullを返す</returns>
-		public static bool? IsStocked (string productID) => IsStocked (Product (productID));
-
-        /// <summary>所有の確認</summary>
-        /// <param name="product">製品</param>
-        /// <returns>製品の所有状態、製品が存在しなければnullを返す</returns>
-        public static bool? IsStocked (Product product) => product != null && Valid && Inventory.ContainsKey (product) ? Inventory [product] : null;
-
-        /// <summary>課金を開始してコールバックを得る</summary>
-        /// <param name="product">製品</param>
-        /// <param name="onPurchased">完了時コールバックハンドラ</param>
-        public static void Purchase (Product product, Action<bool> onPurchased) => _ = PurchaseAsync (product, onPurchased);
-
-        /// <summary>課金を開始してコールバックを得る</summary>
-        /// <param name="product">製品</param>
-        /// <param name="onPurchased">完了時コールバックハンドラ</param>
-        public static void Purchase (string productID, Action<bool> onPurchased) => _ = PurchaseAsync (productID, onPurchased);
-
-        /// <summary>課金</summary>
+        /// <summary>保留中の発注済み消費財を消費</summary>
         /// <param name="product">製品</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static async Task<bool> PurchaseAsync (Product product, Action<bool> onPurchased = null) {
-			Debug.Log ($"PurchaseAsync ({product}, {onInitialized}) {product?.definition?.id}");
-			if (product == null) {
-                // 無効な製品
-                Result = PurchaseResult.ProductUnavailable;
-            } else if (!Valid && !await InitializeAsync ()) {
-                // 初期化できていないので再初期化したものの失敗
-                Result = PurchaseResult.NotValid;
-			} else {
-				instance.purchase (product);
-            }
-            await TaskEx.DelayUntil (() => PurchaseValid); // 購入処理完了を待つ
-			var success = Result == PurchaseResult.SUCCESS;
-            onPurchased?.Invoke (success);
-            return success;
-		}
+        public static Task<bool> ConfirmPurchaseAsync (Product product, Action<bool>? onPurchased = null)
+            => ConfirmPurchaseAsync (product.uSku, onPurchased);
 
-        /// <summary>課金</summary>
-        /// <param name="productID">製品ID</param>
+        /// <summary>保留中の発注済み消費財を消費</summary>
+        /// <param name="productId">製品ID</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static async Task<bool> PurchaseAsync (string productID, Action<bool> onPurchased = null) {
-			Debug.Log ($"PurchaseAsync (productID: {productID})");
-			if (string.IsNullOrEmpty (productID)) {
-                // 無効な製品ID
-                Result = PurchaseResult.ProductUnavailable;
-            } else if (!Valid && !await InitializeAsync ()) {
-				// 初期化できていないので再初期化したものの失敗
-				Result = PurchaseResult.NotValid;
-			} else {
-				// 製品IDから製品を検出するには要初期化
-				return await PurchaseAsync (Product (productID), onPurchased);
+        public static async Task<bool> ConfirmPurchaseAsync (string productId, Action<bool>? onPurchased = null) {
+            if (IsValid && instance!.ConfirmPurchase (productId)) {
+                await TaskEx.DelayWhile (() => IsPurchasing); // 購入処理完了を待つ
+                var success = Result == PurchaseResult.SUCCESS;
+                onPurchased?.Invoke (success);
+                return success;
             }
-            onPurchased?.Invoke (false);
             return false;
         }
 
         #endregion
 
         /// <summary>コントローラー</summary>
-        private IStoreController controller;
-		/// <summary>拡張プロバイダ</summary>
-		private IExtensionProvider extensions;
-		/// <summary>Apple拡張</summary>
-		private IAppleExtensions appleExtensions;
-		/// <summary>Google拡張</summary>
-		private IGooglePlayStoreExtensions googlePlayStoreExtensions;
-		/// <summary>AppleAppStore</summary>
-		private bool isAppleAppStoreSelected;
-		/// <summary>GooglePlayStore</summary>
-		private bool isGooglePlayStoreSelected;
-		/// <summary>検証機構</summary>
-		private CrossPlatformValidator validator;
-		/// <summary>有効</summary>
-		private bool valid => (controller != null && controller.products != null);
+        private StoreController controller;
 
-        /// <summary>購入中</summary>
-        private bool purchasing;
+        /// <summary>製品定義</summary>
+        List<ProductDefinition> productsDefinitions;
+        
+        /// <summary>インスタンスが処理中(排他制御)</summary>
+        private bool isPurchasing;
 
-		/// <summary>コンストラクタ</summary>
-		private Purchaser (IEnumerable<ProductDefinition> products) {
-			Debug.Log ("Purchaser.Construct");
-			Status = PurchaseStatus.NOTINIT;
-			var module = StandardPurchasingModule.Instance ();
-			module.useFakeStoreUIMode = FakeStoreUIMode.StandardUser;
-			isGooglePlayStoreSelected = Application.platform == RuntimePlatform.Android && module.appStore == AppStore.GooglePlay;
-			isAppleAppStoreSelected = Application.platform == RuntimePlatform.IPhonePlayer;// && module.appStore == AppStore.AppleAppStore;
-			var builder = ConfigurationBuilder.Instance (module);
-			builder.AddProducts (products);
-			if (Inventory != null) { Inventory = null; }
-			Inventory = new Inventory { };
-			UnityPurchasing.Initialize (this, builder);
-		}
+        /// <summary>消費の保留中の注文</summary>
+        private Dictionary<string?, PendingOrder> PendingOrder { get; set; } = new ();
 
-		/// <summary>レシート検証</summary>
-		private bool validateReceipt (Product product) {
-			if (/*!valid ||*/ !product.hasReceipt) { return false; }
-#if UNITY_EDITOR
-			return true;
-#else
-			// 各Tangleクラスを得るために、あらかじめ「Services > In-App Purchasing > Receipt Validation Obfuscator...」を実行してください。
-			var validator = new CrossPlatformValidator (GooglePlayTangle.Data (), AppleTangle.Data (), Application.identifier);
-			try {
-				var result = validator.Validate (product.receipt);
-				Debug.Log ($"Purchaser.validateReceipt Receipt is valid. (id:{product.definition.id})");
-#if false
-                Debug.Log ("Contents:");
-                foreach (IPurchaseReceipt productReceipt in result) {
-                    Debug.Log (productReceipt.productID);
-                    Debug.Log (productReceipt.purchaseDate);
-                    Debug.Log (productReceipt.transactionID);
-                    GooglePlayReceipt google = productReceipt as GooglePlayReceipt;
-                    if (null != google) {
-                        Debug.Log (google.purchaseState);
-                        Debug.Log (google.purchaseToken);
-                    }
-                    AppleInAppPurchaseReceipt apple = productReceipt as AppleInAppPurchaseReceipt;
-                    if (null != apple) {
-                        Debug.Log (apple.originalTransactionIdentifier);
-                        Debug.Log (apple.subscriptionExpirationDate);
-                        Debug.Log (apple.cancellationDate);
-                        Debug.Log (apple.quantity);
-                    }
-                }
-#endif
-                return true;
-			} catch (IAPSecurityException ex) {
-                global::UnityEngine.Debug.LogError ($"Purchaser.validateReceipt Invalid receipt {product.definition.id}, not unlocking content. {ex}");
-				return false;
-			}
-#endif
+        /// <summary>コンストラクタ</summary>
+        public Purchaser (List<ProductDefinition> products) {
+            Debug.Log ("生成");
+            // 製品定義
+            productsDefinitions = products;
+            // コントローラを取得
+            controller = UnityIAPServices.StoreController ();
+            // 購入開始イベント
+            controller.OnPurchasePending += OnPurchasePending;
+            // 購入完了イベント
+            controller.OnPurchaseConfirmed += OnPurchaseConfirmed;
+            // 購入失敗イベント
+            controller.OnPurchaseFailed += OnPurchaseFailed;
+            // 購入延期イベント
+            controller.OnPurchaseDeferred += OnPurchaseDeferred;
+            // 接続イベント
+            controller.OnStoreConnected += OnStoreConnected;
+            // 切断イベント
+            controller.OnStoreDisconnected += OnStoreDisconnected;
+            // 目録取得イベント
+            controller.OnProductsFetched += OnProductsFetched;
+            // 目録取得失敗イベント
+            controller.OnProductsFetchFailed += OnProductsFetchFailed;
+            // 製品所有確認イベント
+            controller.OnCheckEntitlement += OnCheckEntitlement;
+            // 購入状況取得イベント
+            controller.OnPurchasesFetched += OnPurchasesFetched;
+            // 購入状況取得失敗イベント
+            controller.OnPurchasesFetchFailed += OnPurchasesFetchFailed;
         }
 
-        /// <summary>課金開始</summary>
-        private bool purchase (Product product) {
-			if (!Tetr4labUtility.IsNetworkAvailable) {
-				Debug.Log ("インターネットへの接続経路がない");
-				Result = PurchaseResult.Disconnected;
-				return false;
-			}
-			if (product != null && product.Valid ()) {
-				Debug.Log ($"Purchaser.InitiatePurchase {product.definition.id} {product.metadata.localizedTitle} {product.metadata.localizedPriceString}");
-				controller.InitiatePurchase (product);
-				purchasing = true;
-				return true;
-			}
-			Result = PurchaseResult.ERROR;
-			return false;
-		}
+        /// <summary>ストアに接続</summary>
+        async Task ConnectAsync () {
+            Debug.Log ("初期化開始");
+            await controller.Connect ();
+            // 完了を待機
+            await TaskEx.DelayWhile (() => Status == PurchaseStatus.NOTINIT);
+            Debug.Log ($"初期化完了 {Status}");
+        }
 
-		/// <summary>保留した課金の完了</summary>
-		private bool confirmPendingPurchase (Product product) {
-			if (!Tetr4labUtility.IsNetworkAvailable) {
-				Debug.Log ("インターネットへの接続経路がない");
-				Result = PurchaseResult.Disconnected;
-				return false;
-			}
-			if (product != null && Inventory [product] && possession (product)) {
-				controller.ConfirmPendingPurchase (product);
-				Inventory [product] = false;
-				Debug.Log ($"Purchaser.ConfirmPendingPurchase {product.GetProperties ()}");
-				Result = PurchaseResult.SUCCESS;
-				return true;
-			}
-			Result = PurchaseResult.ERROR;
-			return false;
-		}
+        /// <summary>ストアに接続した</summary>
+        void OnStoreConnected () {
+            // 製品一覧を取得
+            Debug.Log ("接続");
+            Inventory.Clear ();
+            controller.FetchProducts (productsDefinitions);
+        }
 
-		/// <summary>復元</summary>
-		private void restore (Action<bool, string> onRestored = null) {
-			Debug.Log ("Purchaser.Restore");
-			if (isGooglePlayStoreSelected) {
-				// 不要? ref: https://docs.unity3d.com/ja/current/Manual/UnityIAPRestoringTransactions.html
-				//googlePlayStoreExtensions.RestoreTransactions (success => {
-				//	Debug.Log ($"Purchaser.Restored {success}");
-				//	onRestored?.Invoke (success, null);
-				//});
-				onRestored?.Invoke (true, null);
-			} else if (isAppleAppStoreSelected) {
-#if UNITY_PURCHASING_4_6_0_OR_HIGHER || UNITY_PURCHASING_4_8_0_OR_HIGHER
-                appleExtensions.RestoreTransactions ((success, message) => {
-					Debug.Log ($"Purchaser.Restored {success} {message}");
-					onRestored?.Invoke (success, message);
-				});
-#else
-                appleExtensions.RestoreTransactions ((success) => {
-                    Debug.Log ($"Purchaser.Restored {success}");
-                    onRestored?.Invoke (success, null);
-                });
-#endif
-            } else {
-				onRestored?.Invoke (
-#if UNITY_EDITOR
-					true
-#else
-					false
-#endif
-				, null);
-			}
-		}
+        /// <summary>ストアから切断された</summary>
+        /// <param name="description">切断状況</param>
+        void OnStoreDisconnected (StoreConnectionFailureDescription description) {
+            Debug.Log ($"切断: {description.Message}");
+            Status = PurchaseStatus.OFFLINE;
+        }
 
-		#region Event Handler
+        /// <summary>目録を取得した</summary>
+        /// <param name="products">製品</param>
+        void OnProductsFetched (List<Product> products) {
+            Products = products;
+            UpdateInventory (products);
+            Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.uSku} / {x.type}"))}");
+            controller.FetchPurchases ();
+        }
 
-		/// <summary>iOS 'Ask to buy' 未成年者の「承認と購入のリクエスト」 承認または却下されると通常の購入イベントが発生する</summary>
-		private void OnDeferred (Product product) {
-			Debug.Log ($"Purchaser.Deferred {product.GetProperties ()}");
-		}
-
-		/// <summary>初期化完了</summary>
-		public async void OnInitialized (IStoreController controller, IExtensionProvider extensions) {
-			await TaskEx.DelayUntil (() => instance != null); // シングルトンインスタンスの生成を待つ
-			Debug.Log ($"Purchaser.Initialized ({controller}, {extensions})");
-			appleExtensions = extensions.GetExtension<IAppleExtensions> ();
-			appleExtensions.RegisterPurchaseDeferredListener (OnDeferred);
-			googlePlayStoreExtensions = extensions.GetExtension<IGooglePlayStoreExtensions> ();
-			this.controller = controller;
-			this.extensions = extensions;
-			if (valid) {
-                Status = PurchaseStatus.AVAILABLE;
-                foreach (var product in controller.products.all) {
-					if (!Inventory.ContainsKey (product)) {
-						Inventory [product] = possession (product);
-					}
-				}
-            } else {
-				Debug.LogWarning ($"ストアコントローラが取得できない");
-                Status = PurchaseStatus.UNAVAILABLE;
+        /// <summary>所有状態の更新</summary>
+        void UpdateInventory (IEnumerable<Product> products) {
+            foreach (Product product in products) {
+                controller.CheckEntitlement (product);
             }
-            onInitialized?.Invoke (valid);
         }
 
-        /// <summary>初期化失敗</summary>
-        public void OnInitializeFailed (InitializationFailureReason error, string message) {
-			Debug.Log ($"Purchaser.InitializeFailed {error} {message}");
-			Status = PurchaseStatus.UNAVAILABLE;
-			switch (error) {
-				case InitializationFailureReason.PurchasingUnavailable:
-					Debug.Log ("デバイス設定でアプリ内購入が無効です。");
-					//Debug.Log ("In-App Purchases disabled in device settings.");
-					break;
-
-				case InitializationFailureReason.NoProductsAvailable:
-					Debug.Log ("購入できるプロダクトがありません。");
-					//Debug.Log ("No products available for purchase.");
-					break;
-
-				case InitializationFailureReason.AppNotKnown:
-					Debug.Log ("ストアが、このアプリケーションは「不明」と報告します。");
-					//Debug.Log ("The store reported the app as unknown.");
-					break;
-			}
-            onInitialized?.Invoke (false);
+        /// <summary>所有確認</summary>
+        /// <param name="entitlement">所有状態</param>
+        void OnCheckEntitlement (Entitlement entitlement) {
+            if (entitlement.Product is not null) {
+                Inventory [entitlement.Product] = entitlement.Status == EntitlementStatus.FullyEntitled || entitlement.Status == EntitlementStatus.EntitledUntilConsumed;
+                // 実消費の消耗品でも`EntitledUntilConsumed`にはならない様子
+            }
+            Debug.Log ($"所有: '{entitlement.Product?.uSku}' {entitlement.Status}");
         }
 
-        /// <summary>初期化失敗 (旧形式)</summary>
-        public void OnInitializeFailed (InitializationFailureReason error) => OnInitializeFailed (error);
+        /// <summary>目録の取得に失敗した</summary>
+        /// <param name="failed">失敗状況</param>
+        void OnProductsFetchFailed (ProductFetchFailed failed) {
+            Products = new ();
+            Debug.Log ($"目録失敗: {failed.FailureReason}");
+            Status = PurchaseStatus.UNAVAILABLE;
+        }
 
-#if UNITY_PURCHASING_4_8_0_OR_HIGHER
-		/// <summary>課金失敗</summary>
-		public void OnPurchaseFailed (Product product, PurchaseFailureDescription failureDescription) => OnPurchaseFailed (product, failureDescription.reason);
-#endif
-        /// <summary>課金失敗</summary>
-        public void OnPurchaseFailed (Product product, PurchaseFailureReason reason) {
-			Debug.Log ($"Purchaser.PurchaseFailed Reason={reason}\n{product.GetProperties ()}");
-			switch (reason) {
-				case PurchaseFailureReason.PurchasingUnavailable:
-					Debug.Log ("システムの購入機能が利用できません。");
-					//reason = "The system purchasing feature is unavailable.";
-					Result = PurchaseResult.PurchasingUnavailable;
-					break;
+        /// <summary>注文状況取得</summary>
+        /// <param name="orders">注文</param>
+        void OnPurchasesFetched (Orders orders) {
+            Debug.Log ($"注文状況: c={orders.ConfirmedOrders.Count} / p={orders.PendingOrders.Count} / d={orders.DeferredOrders.Count}");
+            Status = PurchaseStatus.AVAILABLE;
+        }
 
-				case PurchaseFailureReason.ExistingPurchasePending:
-					Debug.Log ("新たに購入をリクエストしましたが、すでに購入処理中でした。");
-					//reason = "A purchase was already in progress when a new purchase was requested.";
-					Result = PurchaseResult.ExistingPurchasePending;
-					break;
+        /// <summary>注文状況取得失敗</summary>
+        /// <param name="description">失敗状況</param>
+        void OnPurchasesFetchFailed (PurchasesFetchFailureDescription description) {
+            Debug.Log ($"注文状況取得失敗: {description.Message} {description.FailureReason}");
+            Status = PurchaseStatus.UNAVAILABLE;
+        }
 
-				case PurchaseFailureReason.ProductUnavailable:
-					Debug.Log ("ストアで購入できる商品ではありません。");
-					//reason = "The product is not available to purchase on the store.";
-					Result = PurchaseResult.ProductUnavailable;
-					break;
+        /// <summary>注文受諾(付与請求)</summary>
+        /// <param name="order">保留中の注文</param>
+        void OnPurchasePending (PendingOrder order) {
+            Debug.Log ($"注文受諾: {order.Info.Receipt}");
+            var consumable = false;
+            var products = new List<Product> ();
+            string? firstProductId = null;
+            foreach (var item in order.CartOrdered.Items ()) {
+                // 検証を行い、ユーザーにアイテムや権利を付与する
+                Result = PurchaseResult.SUCCESS;
+                firstProductId ??= item.Product.uSku;
+                Debug.Log ($"注文品: {item.Product.uSku} {item.Product.type}");
+                if (item.Product.type == ProductType.Consumable) {
+                    consumable = true;
+                }
+                products.Add (item.Product);
+            }
+            if (consumable) {
+                // 消耗品なら消費を保留して終了
+                PendingOrder [firstProductId] = order;
+                Result = PurchaseResult.Pending;
+                isPurchasing = false;
+            } else {
+                // ストア側に「購入処理の完了」を通知
+                controller.ConfirmPurchase (order);
+            }
+        }
 
-				case PurchaseFailureReason.SignatureInvalid:
-					Debug.Log ("課金レシートのシグネチャ検証に失敗しました。");
-					//reason = "Signature validation of the purchase's receipt failed.";
-					Result = PurchaseResult.SignatureInvalid;
-					break;
+        /// <summary>保留中の注文を完了(消耗品の消費)</summary>
+        /// <returns>保留中の注文の有無</returns>
+        public bool ConfirmPurchase (string productId) {
+            Debug.Log ($"消費: {productId}");
+            if (PendingOrder.ContainsKey (productId)) {
+                Result = PurchaseResult.Purchasing;
+                // ストア側に「購入処理の完了」を通知
+                controller.ConfirmPurchase (PendingOrder [productId]);
+                PendingOrder.Remove (productId);
+                return true;
+            }
+            Debug.Log ("完了済");
+            return false;
+        }
 
-				case PurchaseFailureReason.UserCancelled:
-					Debug.Log ("ユーザは購入の続行よりキャンセルを選びました。");
-					//reason = "The user opted to cancel rather than proceed with the purchase.";
-					Result = PurchaseResult.UserCancelled;
-					break;
+        /// <summary>購入完了</summary>
+        /// <param name="order">注文</param>
+        void OnPurchaseConfirmed (Order order) {
+            var products = order.CartOrdered.Items ().ToList ().ConvertAll (x => x.Product);
+            var ids = string.Join (", ", products.ConvertAll (x => $"{x.definition?.id}"));
+            switch (order) {
+                case FailedOrder failedOrder:
+                    // 失敗の派生クラス
+                    Debug.Log ($"購入完了失敗: {order.Info.Receipt} {ids}, {failedOrder.FailureReason}, {failedOrder.Details}");
+                    break;
+                case ConfirmedOrder confirmedOrder:
+                    // 完了の派生クラス
+                    UpdateInventory (products);
+                    Debug.Log ($"購入完了:  {order.Info.Receipt} {ids}");
+                    break;
+                default:
+                    Debug.Log ($"不明な購入完了結果: {order.Info.Receipt} {order.GetType ()}");
+                    break;
+            }
+            isPurchasing = false;
+        }
 
-				case PurchaseFailureReason.PaymentDeclined:
-					Debug.Log ("支払いに問題がありました。");
-					//reason = "There was a problem with the payment.";
-					Result = PurchaseResult.PaymentDeclined;
-					break;
+        /// <summary>購入失敗</summary>
+        /// <param name="order">失敗した注文</param>
+        void OnPurchaseFailed (FailedOrder order) {
+            Debug.Log ($"購入失敗: {order.Info.Receipt} {order.Details}");
+            Result = PurchaseFailureReason.OrderCancelled;
+            isPurchasing = false;
+        }
 
-				case PurchaseFailureReason.DuplicateTransaction:
-					Debug.Log ("重複トランザクションエラー");
-					//reason = "A duplicate transaction error when the transaction has already been completed successfully.";
-					Result = PurchaseResult.DuplicateTransaction;
-					break;
+        /// <summary>承認待機</summary>
+        /// <param name="order">承認の必要な注文</param>
+        void OnPurchaseDeferred (DeferredOrder order) {
+            Debug.Log ($"承認待機: {order.Info.Receipt}");
+            isPurchasing = false;
+        }
 
-				case PurchaseFailureReason.Unknown:
-					Debug.Log ("その他の認識不能な購入エラー");
-					//reason = "A catch-all for unrecognized purchase problems.";
-					Result = PurchaseResult.Unknown;
-					break;
-			}
-			purchasing = false;
-		}
+        /// <summary>発注</summary>
+        /// <param name="productId">対象製品ID</param>
+        public bool Purchase (string productId) {
+            Debug.Log ($"発注: {productId}");
+            if (PurchaseAvailable) {
+                var product = Products.Find (x => x.uSku == productId);
+                if (instance!.PendingOrder.ContainsKey (productId) == true) {
+                    Debug.Log ("保留中");
+                    Result = PurchaseFailureReason.ExistingPurchasePending;
+                } else if (Inventory.Contains (productId)) {
+                    Debug.Log ("所有中");
+                    Result = PurchaseFailureReason.DuplicateTransaction;
+                } else if (product?.IsValid () == true) {
+                    isPurchasing = true;
+                    controller.PurchaseProduct (productId);
+                    Result = PurchaseResult.Purchasing;
+                    return true;
+                } else {
+                    Debug.Log ($"無効な製品: {productId} {product?.definition.enabled} {product?.availableToPurchase}");
+                    Result = PurchaseFailureReason.ProductUnavailable;
+                }
+            }
+            return false;
+        }
 
-		/// <summary>課金結果 有効な消耗品なら保留、それ以外は完了とする</summary>
-		public PurchaseProcessingResult ProcessPurchase (PurchaseEventArgs eventArgs) {
-			var validated = ValidateReceipt (eventArgs.purchasedProduct);
-			Inventory [eventArgs.purchasedProduct] = validated;
-			Debug.Log ($"Purchaser.ProcessPurchase {(validated ? "Validated" : "ValidationError")} {eventArgs.purchasedProduct.GetProperties ()}");
-			if (valid) {
-				Result = PurchaseResult.SUCCESS;
-				purchasing = false;
-			}
-			return (validated && eventArgs.purchasedProduct.definition.type == ProductType.Consumable) ? PurchaseProcessingResult.Pending : PurchaseProcessingResult.Complete;
-		}
+        /// <summary>発注</summary>
+        /// <param name="product">対象製品</param>
+        public bool Purchase (Product product) {
+            Debug.Log ($"発注: {product.uSku}");
+            if (PurchaseAvailable) {
+                if (instance!.PendingOrder.ContainsKey (product.uSku) == true) {
+                    Debug.Log ("保留中");
+                    Result = PurchaseFailureReason.ExistingPurchasePending;
+                } else if (Inventory.Contains (product.uSku)) {
+                    Debug.Log ("所有中");
+                    Result = PurchaseFailureReason.DuplicateTransaction;
+                } else if (product.IsValid ()) {
+                    isPurchasing = true;
+                    controller.PurchaseProduct (product);
+                    Result = PurchaseResult.Purchasing;
+                    return true;
+                } else {
+                    Debug.Log ($"無効な製品: {product.uSku} {product.definition.enabled} {product.availableToPurchase}");
+                    Result = PurchaseFailureReason.ProductUnavailable;
+                }
+            }
+            return false;
+        }
 
-		/// <summary>破棄</summary>
-		~Purchaser () {
-			Debug.Log ("Purchaser.Destruct");
-			if (instance == this) {
-				instance = null;
-				Inventory = null;
-				Status = PurchaseStatus.AVAILABLE;
-				_products = null;
-			}
-		}
+        /// <summary>発注可能</summary>
+        private bool PurchaseAvailable {
+            get {
+                if (!Tetr4labUtility.IsNetworkAvailable) {
+                    Debug.Log ("インターネットへの接続経路がない");
+                    Result = PurchaseResult.Disconnected;
+                } else if (!IsValid) {
+                    Debug.Log ("未初期化");
+                    Result = PurchaseResult.NotValid;
+                } else if (isPurchasing) {
+                    Debug.Log ("購入中");
+                    Result = PurchaseFailureReason.ExistingPurchasePending;
+                } else {
+                    return true;
+                }
+                return false;
+            }
+        }
 
-		#endregion
+        /// <summary>復元完了処理</summary>
+        Action<bool, string?>? onRestored;
+
+        /// <summary>復元の成否</summary>
+        bool RestrationResult;
+
+        /// <summary>復元</summary>
+        /// <remarks>呼び出し側でプラットフォームや初期化状況の確認が必要</remarks>
+        /// <param name="onRestored">完了通知(成否を問わず)</param>
+        private void RestoreTransactions (Action<bool, string?>? onRestored = null) {
+            isPurchasing = true;
+            this.onRestored = onRestored;
+            controller.RestoreTransactions (OnTransactionsRestored);
+        }
+
+        /// <summary>復元完了</summary>
+        /// <param name="success">成否</param>
+        /// <param name="error">エラーメッセージ</param>
+        void OnTransactionsRestored (bool success, string? error) {
+            Debug.Log (success ? "復元成功" : $"復元失敗: {error}");
+            RestrationResult = success;
+            onRestored?.Invoke (success, error);
+            isPurchasing = false;
+        }
 	}	// Purchaser
 
 	/// <summary>製品拡張</summary>
@@ -527,8 +556,8 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 		/// <summary>製品諸元</summary>
 		public static string GetProperties (this Product product) {
 			return string.Join ("\n", new [] {
-				$"id={product.definition.id} ({product.definition.storeSpecificId})",
-				$"type={product.definition.type}",
+				$"id={product.uSku} ({product.definition.storeSpecificId})",
+				$"type={product.type}",
 				$"enabled={product.definition.enabled}",
 				$"available={product.availableToPurchase}",
 				$"localizedTitle={product.metadata.localizedTitle}({product.metadata.shortTitle ()})",
@@ -536,32 +565,20 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 				$"isoCurrencyCode={product.metadata.isoCurrencyCode}",
 				$"localizedPrice={product.metadata.localizedPrice}",
 				$"localizedPriceString={product.metadata.localizedPriceString}",
-				$"transactionID={product.transactionID}",
-				$"Receipt has={product.hasReceipt}",
-				$"Purchaser.Valid={Purchaser.Valid}",
-				$"Receipt validation={Purchaser.ValidateReceipt (product)}",
+				//$"transactionID={product.transactionID}",
+				//$"Receipt has={product.hasReceipt}",
+				$"Purchaser.Valid={Purchaser.IsValid}",
+				//$"Receipt validation={Purchaser.ValidateReceipt (product)}",
 				$"Possession={Purchaser.Inventory [product]}",
 			});
 		}
 
-		/// <summary>目録からIDで探す</summary>
-		/// <param name="products">目録</param>
-		/// <param name="id">ID</param>
-		/// <returns>製品</returns>
-		public static Product GetProduct (this Product [] products, string id) {
-			var i = Array.FindIndex (products, p => p.definition.id == id);
-			return (i < 0) ? null : products [i];
-        }
-
 		/// <summary>有効性 製品がストアに登録されていることを示すが、ストアで有効かどうかには拠らない</summary>
-		public static bool Valid (this Product product) {
-			return (product.definition.enabled && product.availableToPurchase);
-		}
+		public static bool IsValid (this Product product) => product.definition.enabled && product.availableToPurchase;
 
 		/// <summary>アプリ名を含まないタイトル</summary>
-		public static string shortTitle (this ProductMetadata metadata) {
-			return (metadata != null && !string.IsNullOrEmpty (metadata.localizedTitle)) ? (new Regex (@"\s*\(.+\)$")).Replace (metadata.localizedTitle, "") : string.Empty;
-		}
+		public static string shortTitle (this ProductMetadata metadata)
+            => (metadata != null && !string.IsNullOrEmpty (metadata.localizedTitle)) ? (new Regex (@"\s*\(.+\)$")).Replace (metadata.localizedTitle, "") : string.Empty;
 
 	}	// ProductExtentions
 
@@ -570,14 +587,24 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
 		/// <summary>Productによるアクセス</summary>
 		public bool this [Product product] {
-			get => base [product.definition.id];
-			set => base [product.definition.id] = value;
+			get => base [product.uSku];
+			set => base [product.uSku] = value;
 		}
 
 		/// <summary>Productによる存在確認</summary>
-		public bool ContainsKey (Product product) => ContainsKey (product.definition.id);
+		public bool ContainsKey (Product product) => ContainsKey (product.uSku);
 
-	}	// Inventory
+        /// <summary>所有</summary>
+        /// <param name="productId">製品ID</param>
+        /// <returns>有無</returns>
+        public bool Contains (string productId) => TryGetValue (productId, out var value) ? value : false;
+
+        /// <summary>所有</summary>
+        /// <param name="product">製品</param>
+        /// <returns>有無</returns>
+        public bool Contains (Product product) => TryGetValue (product.uSku, out var value) ? value : false;
+
+    }	// Inventory
 
 }	// namespace
 #endif
