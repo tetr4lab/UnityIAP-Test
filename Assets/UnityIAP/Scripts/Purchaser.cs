@@ -111,7 +111,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>IDから製品を得る</summary>
         /// <param name="productID">製品ID</param>
         /// <returns>製品</returns>
-        public static Product? Product (string productID) => !string.IsNullOrEmpty (productID) && IsValid ? Products.FirstOrDefault (x => x.uSku == productID) : null;
+        public static Product? Product (string productID) => !string.IsNullOrEmpty (productID) && IsValid ? Products.FirstOrDefault (x => x.definition.id == productID) : null;
 
         /// <summary>購入の結果</summary>
         public static PurchaseResult Result { get; private set; } = new ();
@@ -188,7 +188,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         public static bool ConfirmPendingPurchase (string productId) => IsValid ? instance!.ConfirmPurchase (productId) : false;
 
         /// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-        public static bool ConfirmPendingPurchase (Product product) => ConfirmPendingPurchase (product.uSku);
+        public static bool ConfirmPendingPurchase (Product product) => ConfirmPendingPurchase (product.definition.id);
 
 		/// <summary>復元 課金情報の復元を行い、失敗を含めて結果のコールバックを得る</summary>
 		public static async Task<bool> RestoreAsync (Action<bool, string?>? onRestored = null) {
@@ -206,7 +206,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         public static bool IsStocked (string productId) => IsValid && (instance!.PendingOrder.ContainsKey (productId) || Inventory.Contains (productId));
 
         /// <summary>所有/未消費の確認</summary>
-        public static bool IsStocked (Product product) => IsStocked (product.uSku);
+        public static bool IsStocked (Product product) => IsStocked (product.definition.id);
 
         /// <summary>発注</summary>
         /// <remarks>消耗品は事後に別途消費する</remarks>
@@ -214,7 +214,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
         public static Task<bool> PurchaseAsync (Product product, Action<bool>? onPurchased = null)
-            => PurchaseAsync (product.uSku, onPurchased);
+            => PurchaseAsync (product.definition.id, onPurchased);
 
         /// <summary>発注</summary>
         /// <remarks>消耗品は事後に別途消費する</remarks>
@@ -243,7 +243,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
         public static Task<bool> ConfirmPurchaseAsync (Product product, Action<bool>? onPurchased = null)
-            => ConfirmPurchaseAsync (product.uSku, onPurchased);
+            => ConfirmPurchaseAsync (product.definition.id, onPurchased);
 
         /// <summary>保留中の発注済み消費財を消費</summary>
         /// <param name="productId">製品ID</param>
@@ -333,7 +333,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         void OnProductsFetched (List<Product> products) {
             Products = products;
             UpdateInventory (products);
-            Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.uSku} / {x.type}"))}");
+            Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.definition.id} / {x.definition.type}"))}");
             controller.FetchPurchases ();
         }
 
@@ -351,7 +351,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                 Inventory [entitlement.Product] = entitlement.Status == EntitlementStatus.FullyEntitled || entitlement.Status == EntitlementStatus.EntitledUntilConsumed;
                 // 実消費の消耗品でも`EntitledUntilConsumed`にはならない様子
             }
-            Debug.Log ($"所有: '{entitlement.Product?.uSku}' {entitlement.Status}");
+            Debug.Log ($"所有: '{entitlement.Product?.definition.id}' {entitlement.Status}");
         }
 
         /// <summary>目録の取得に失敗した</summary>
@@ -386,9 +386,9 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             foreach (var item in order.CartOrdered.Items ()) {
                 // 検証を行い、ユーザーにアイテムや権利を付与する
                 Result = PurchaseResult.SUCCESS;
-                firstProductId ??= item.Product.uSku;
-                Debug.Log ($"注文品: {item.Product.uSku} {item.Product.type}");
-                if (item.Product.type == ProductType.Consumable) {
+                firstProductId ??= item.Product.definition.id;
+                Debug.Log ($"注文品: {item.Product.definition.id} {item.Product.definition.type}");
+                if (item.Product.definition.type == ProductType.Consumable) {
                     consumable = true;
                 }
                 products.Add (item.Product);
@@ -445,7 +445,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <param name="order">失敗した注文</param>
         void OnPurchaseFailed (FailedOrder order) {
             Debug.Log ($"購入失敗: {order.Info.Receipt} {order.Details}");
-            Result = PurchaseFailureReason.OrderCancelled;
+            Result = PurchaseFailureReason.UserCancelled;
             isPurchasing = false;
         }
 
@@ -461,7 +461,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         public bool Purchase (string productId) {
             Debug.Log ($"発注: {productId}");
             if (PurchaseAvailable) {
-                var product = Products.Find (x => x.uSku == productId);
+                var product = Products.Find (x => x.definition.id == productId);
                 if (instance!.PendingOrder.ContainsKey (productId) == true) {
                     Debug.Log ("保留中");
                     Result = PurchaseFailureReason.ExistingPurchasePending;
@@ -484,12 +484,12 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>発注</summary>
         /// <param name="product">対象製品</param>
         public bool Purchase (Product product) {
-            Debug.Log ($"発注: {product.uSku}");
+            Debug.Log ($"発注: {product.definition.id}");
             if (PurchaseAvailable) {
-                if (instance!.PendingOrder.ContainsKey (product.uSku) == true) {
+                if (instance!.PendingOrder.ContainsKey (product.definition.id) == true) {
                     Debug.Log ("保留中");
                     Result = PurchaseFailureReason.ExistingPurchasePending;
-                } else if (Inventory.Contains (product.uSku)) {
+                } else if (Inventory.Contains (product.definition.id)) {
                     Debug.Log ("所有中");
                     Result = PurchaseFailureReason.DuplicateTransaction;
                 } else if (product.IsValid ()) {
@@ -498,7 +498,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     Result = PurchaseResult.Purchasing;
                     return true;
                 } else {
-                    Debug.Log ($"無効な製品: {product.uSku} {product.definition.enabled} {product.availableToPurchase}");
+                    Debug.Log ($"無効な製品: {product.definition.id} {product.definition.enabled} {product.availableToPurchase}");
                     Result = PurchaseFailureReason.ProductUnavailable;
                 }
             }
@@ -556,8 +556,8 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 		/// <summary>製品諸元</summary>
 		public static string GetProperties (this Product product) {
 			return string.Join ("\n", new [] {
-				$"id={product.uSku} ({product.definition.storeSpecificId})",
-				$"type={product.type}",
+				$"id={product.definition.id} ({product.definition.storeSpecificId})",
+				$"type={product.definition.type}",
 				$"enabled={product.definition.enabled}",
 				$"available={product.availableToPurchase}",
 				$"localizedTitle={product.metadata.localizedTitle}({product.metadata.shortTitle ()})",
@@ -587,12 +587,12 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
 		/// <summary>Productによるアクセス</summary>
 		public bool this [Product product] {
-			get => base [product.uSku];
-			set => base [product.uSku] = value;
+			get => base [product.definition.id];
+			set => base [product.definition.id] = value;
 		}
 
 		/// <summary>Productによる存在確認</summary>
-		public bool ContainsKey (Product product) => ContainsKey (product.uSku);
+		public bool ContainsKey (Product product) => ContainsKey (product.definition.id);
 
         /// <summary>所有</summary>
         /// <param name="productId">製品ID</param>
@@ -602,7 +602,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>所有</summary>
         /// <param name="product">製品</param>
         /// <returns>有無</returns>
-        public bool Contains (Product product) => TryGetValue (product.uSku, out var value) ? value : false;
+        public bool Contains (Product product) => TryGetValue (product.definition.id, out var value) ? value : false;
 
     }	// Inventory
 

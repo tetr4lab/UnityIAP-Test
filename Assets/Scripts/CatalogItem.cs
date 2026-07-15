@@ -39,7 +39,7 @@ public class CatalogItem : MonoBehaviour {
 
 	private void init (Product product, UnityAction<Product> onPushBuyButton, UnityAction<Product> onPushConsumeButton) {
 		this.product = product;
-		ID.text = product.uSku;
+		ID.text = product.definition.id;
 		Title.text = product.metadata.localizedTitle;
 		Description.text = product.metadata.localizedDescription;
 		Price.text = product.metadata.localizedPriceString;
@@ -56,7 +56,7 @@ public class CatalogItem : MonoBehaviour {
 		if (product != null && (lastHas != has)) {
 			ID.color = Title.color = Description.color = Price.color = valid ? (has ? Color.grey : Color.white) : Color.red;
 			Buy.interactable = valid && !has;
-			Consume.gameObject.SetActive (Consume.interactable = valid && product.type == ProductType.Consumable && has);
+			Consume.gameObject.SetActive (Consume.interactable = valid && product.definition.type == ProductType.Consumable && has);
 			lastHas = has;
 		}
 	}

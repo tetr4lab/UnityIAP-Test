@@ -30,7 +30,7 @@ public class Store : MonoBehaviour {
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item4", ProductType.NonConsumable),
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
             new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
+            //new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
 		};
 #endif
 

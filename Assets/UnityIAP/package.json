@@ -7,7 +7,7 @@
     "documentationUrl": "https://github.com/tetr4lab/UnityIAP-Test.git?path=/Assets/UnityIAP",
     "licenses": "MIT",
     "dependencies": {
-        "com.unity.purchasing": "5.4.0"
+        "com.unity.purchasing": "5.3.0"
     },
     "keywords": [
         "IAP",
