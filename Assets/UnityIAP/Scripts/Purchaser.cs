@@ -200,13 +200,14 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 		/// <summary>復元 課金情報の復元を行い、失敗を含めて結果のコールバックを得る</summary>
 		public static async Task<bool> RestoreAsync (Action<bool, string?>? onRestored = null) {
 			if (IsValid) {
-                if (Application.platform == RuntimePlatform.IPhonePlayer) {
+                if (Application.platform == RuntimePlatform.IPhonePlayer || Application.platform == RuntimePlatform.tvOS) {
                     instance.RestoreTransactions ();
                     await TaskEx.DelayWhile (() => IsPurchasing); // 処理完了を待つ
                 } else {
                     instance.RestrationResult = true;
                 }
                 await instance.FetchProducts ();
+                await instance.FetchPurchases ();
                 onRestored?.Invoke (instance.RestrationResult, instance.RestrationError);
                 return instance.RestrationResult;
             } else {
@@ -305,6 +306,9 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>承認待機中の注文</summary>
         private Dictionary<string, DeferredOrder> DeferredOrder { get; set; } = new ();
 
+        /// <summary>ストアから取得した確定済み注文</summary>
+        private IReadOnlyList<ConfirmedOrder>? ConfirmedOrders { get; set; }
+
         /// <summary>コンストラクタ</summary>
         private Purchaser () {
             Debug.Log ("生成");
@@ -349,7 +353,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             // 製品一覧を取得
             if (await FetchProducts ()) {
                 // 注文状況の取得へ
-                controller.FetchPurchases ();
+                Status = await FetchPurchases () ? PurchaseStatus.AVAILABLE : PurchaseStatus.UNAVAILABLE;
             } else {
                 // 取得に失敗したため初期化失敗
                 Status = PurchaseStatus.UNAVAILABLE;
@@ -422,18 +426,45 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             isFetchingProducts = false;
         }
 
+        /// <summary>注文状況を取得中</summary>
+        bool isFetchingPurchases;
+
+        /// <summary>注文状況を取得</summary>
+        async Task<bool> FetchPurchases () {
+            isFetchingPurchases = true;
+            controller.FetchPurchases ();
+            await TaskEx.DelayWhile (() => isFetchingPurchases);
+            return ConfirmedOrders is not null;
+        }
+
         /// <summary>注文状況取得</summary>
         /// <param name="orders">注文</param>
         void OnPurchasesFetched (Orders orders) {
             Debug.Log ($"注文状況: c={orders.ConfirmedOrders.Count} / p={orders.PendingOrders.Count} / d={orders.DeferredOrders.Count}");
-            Status = PurchaseStatus.AVAILABLE;
+            PendingOrder.Clear ();
+            foreach (var order in orders.PendingOrders) {
+                var items = order.CartOrdered.Items ();
+                if (items.Count > 0) {
+                    PendingOrder [items [0].Product.definition.id] = order;
+                }
+            }
+            DeferredOrder.Clear ();
+            foreach (var order in orders.DeferredOrders) {
+                var items = order.CartOrdered.Items ();
+                if (items.Count > 0) {
+                    DeferredOrder [items [0].Product.definition.id] = order;
+                }
+            }
+            ConfirmedOrders = orders.ConfirmedOrders;
+            isFetchingPurchases = false;
         }
 
         /// <summary>注文状況取得失敗</summary>
         /// <param name="description">失敗状況</param>
         void OnPurchasesFetchFailed (PurchasesFetchFailureDescription description) {
             Debug.Log ($"注文状況取得失敗: {description.Message} {description.FailureReason}");
-            Status = PurchaseStatus.UNAVAILABLE;
+            ConfirmedOrders = null;
+            isFetchingPurchases = false;
         }
 
         /// <summary>注文受諾(付与請求)</summary>
