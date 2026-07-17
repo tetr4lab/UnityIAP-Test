@@ -9,7 +9,7 @@ using Tetr4lab.UnityEngine.InAppPuchaser;
 /// <summary>表示用アイテム目録</summary>
 public class Catalog : MonoBehaviour {
 
-	#region Static
+    #region Static
 
 	private static GameObject prefab;
 	private static Catalog instance;
@@ -35,7 +35,7 @@ public class Catalog : MonoBehaviour {
 		return instance;
 	}
 
-	#endregion
+    #endregion
 
 	private void init (UnityAction<Product> onPushBuyButton, UnityAction<Product> onPushConsumeButton) {
 		ScrollRect = GetComponent<ScrollRect> ();

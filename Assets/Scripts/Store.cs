@@ -42,24 +42,31 @@ public class Store : MonoBehaviour {
 		CreateCatalog ();
 	}
 
+    /// <summary>生成中</summary>
+    private bool isCreating;
+
 	/// <summary>初期化とカタログの生成</summary>
-	private void CreateCatalog (bool force = false) {
+	private async void CreateCatalog (bool force = false) {
 #if ALLOW_UIAP
-		if (Purchaser.IsValid) { return; } // 初期化済み
+        isCreating = true;
+        if (Purchaser.IsValid && !force) { return; } // 初期化済み
 		WaitIndicator.display = true;
-		Purchaser.Initialize (products, ready => {
-			InfoPanel.text = $"{Purchaser.Status}";
-			if (WaitIndicator.display && (Purchaser.Status == PurchaseStatus.AVAILABLE || Purchaser.Status == PurchaseStatus.OFFLINE)) {
-				// オフラインの場合を含めて、いったんは初期化された
-				WaitIndicator.display = false;
-			}
-			if (Purchaser.IsValid && (Catalog.Count == null || force)) {
-				// 初期化できていて、未生成または強制なら、(再)生成
-				Catalog.Create (CatalogHolder, OnPushBuyButon, OnPushConsumeButton);
-			}
-		});
+        if (!Purchaser.IsValid) {
+            await Purchaser.InitializeAsync (Purchaser.Status == PurchaseStatus.NOTINIT ? products : null);
+        }
+        InfoPanel.text = $"{Purchaser.Status}";
+        if (WaitIndicator.display && (Purchaser.Status == PurchaseStatus.AVAILABLE || Purchaser.Status == PurchaseStatus.OFFLINE || Purchaser.Status == PurchaseStatus.UNAVAILABLE)) {
+            // オフラインの場合を含めて、いったんは初期化された、または完全に失敗した
+            WaitIndicator.display = false;
+        }
+        if (Purchaser.IsValid && (Catalog.Count == null || force)) {
+            // 初期化できていて、未生成または強制なら、(再)生成
+            Catalog.Create (CatalogHolder, OnPushBuyButon, OnPushConsumeButton);
+        }
+        Debug.Log ($"CreateCatalog {Purchaser.Status} {Catalog.Count}");
+        isCreating = false;
 #endif
-	}
+    }
 
 #if ALLOW_UIAP
     /// <summary>購入ボタン</summary>
@@ -74,20 +81,20 @@ public class Store : MonoBehaviour {
 		} else {
 			ModalDialog.Create (
 				transform.parent,
-				$"{Purchaser.Result}\n{product.metadata.shortTitle ()}の購入に{((Purchaser.Result.IsSuccess) ? "成功" : "失敗")}しました。",
+                $"{Purchaser.Result}\n{product.metadata.shortTitle ()}の購入{((Purchaser.Result.IsSuccess) ? Purchaser.Result == PurchaseResult.Deferring ? "は承認待ちになり" : "に成功し" : "に失敗し")}ました。",
 				() => WaitIndicator.display = false
 			);
 		}
 	}
 
 	/// <summary>消費ボタン</summary>
-	public void OnPushConsumeButton (Product product) {
+	public async void OnPushConsumeButton (Product product) {
 		WaitIndicator.display = true;
-		var success = Purchaser.ConfirmPendingPurchase (product) && Purchaser.IsStocked (product) == false;
-		InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
+		var success = await Purchaser.ConfirmPurchaseAsync (product) && !Purchaser.IsConsumable (product.definition.id);
+		InfoPanel.text = Purchaser.Result.ToString ();
 		ModalDialog.Create (
 			transform.parent,
-			$"{product.metadata.shortTitle ()}の消費に{(success ? "成功" : "失敗")}しました。",
+			$"{product.metadata.shortTitle ()}の消費に{Purchaser.Result.ToJString ()}しました。",
 			() => WaitIndicator.display = false
 		);
 	}
@@ -112,7 +119,7 @@ public class Store : MonoBehaviour {
 
 	/// <summary>駆動</summary>
 	private void Update () {
-        if (!Purchaser.IsValid && Purchaser.Status == PurchaseStatus.OFFLINE && Tetr4labUtility.IsNetworkAvailable) {
+        if (!isCreating && !Purchaser.IsValid && Purchaser.Status == PurchaseStatus.OFFLINE && Tetr4labUtility.IsNetworkAvailable) {
 			// オンラインになったので遅延初期化を実施
 			CreateCatalog ();
 		}

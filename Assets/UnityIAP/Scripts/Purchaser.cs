@@ -36,19 +36,27 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>失敗の理由</summary>
         public PurchaseFailureReason Reason { get; private set; }
         /// <summary>成否</summary>
-        public bool IsSuccess => Result == SUCCESS || Result == Pending;
-        /// <summary>購入失敗</summary>
-        public static int ERROR = -1;
-        /// <summary>購入成功</summary>
-        public static int SUCCESS = 0;
-        /// <summary>進行中</summary>
-        public static int Purchasing = 1;
-        /// <summary>保留中(消費待ち)</summary>
-        public static int Pending = 2;
-        /// <summary>初期化できていない</summary>
-        public static int NotValid = 3;
+        public bool IsSuccess => Result == SUCCESS || Result == Pending || Result == Deferring;
+        /// <summary>該当の注文が見つからない</summary>
+        public const int NotFound = -5;
         /// <summary>ネット接続がない</summary>
-        public static int Disconnected = 4;
+        public const int Disconnected = -4;
+        /// <summary>他の処理中</summary>
+        public const int Busy = -3;
+        /// <summary>初期化できていない</summary>
+        public const int Unavailable = -2;
+        /// <summary>購入失敗</summary>
+        public const int ERROR = -1;
+        /// <summary>購入成功</summary>
+        public const int SUCCESS = 0;
+        /// <summary>進行中</summary>
+        public const int Purchasing = 1;
+        /// <summary>保留中(消費待ち)</summary>
+        public const int Pending = 2;
+        /// <summary>承認待機</summary>
+        public const int Deferring = 3;
+        /// <summary>完了確認中</summary>
+        public const int Confirming = 4;
         /// <summary>結果の取得</summary>
         public static implicit operator int (PurchaseResult x) => x.Result;
         /// <summary>結果の代入</summary>
@@ -59,10 +67,14 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         public static implicit operator PurchaseResult (PurchaseFailureReason x) => new PurchaseResult { Result = ERROR, Reason = x, };
         /// <summary>初期値</summary>
         public PurchaseResult () { Result = SUCCESS; Reason = PurchaseFailureReason.Unknown; }
-        /// <summary>結果の名称</summary>
-        private static readonly string [] resultName = { "成功", "進行中", "保留中", "未初期化", "切断", };
+        /// <summary>成功の名称</summary>
+        private static readonly string [] resultName = { "Success", "Purchasing", "Pending", "Deferring", "Confirming", };
+        /// <summary>失敗の名称</summary>
+        private static readonly string [] errorName = { "Error", "Unavailable", "Busy", "Disconnected", "NotFound", };
         /// <summary>文字列化</summary>
-        public override string ToString () => Result == ERROR ? $"失敗: {Reason}" : Result < resultName.Length ? resultName [Result] : "規定外";
+        public override string ToString () => ToJString (false);
+        /// <summary>日本語文字列化</summary>
+        public string ToJString (bool jp = true) => Result >= 0 && Result < resultName.Length ? Result > 0 ? resultName [Result] : (jp? "成功" : resultName [0]) : $"{(jp ? "失敗" : errorName [0])}({(Result == ERROR ? Reason : errorName [Math.Abs (Result + 1)])})";
     }
 
     /// <summary>課金処理</summary>
@@ -70,18 +82,19 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
     /// 初期化フロー
     ///     Connect() 接続
     ///         ├─ OnStoreConnected -> 接続完了
-    ///         │   └─ FetchProducts() 目録取得
-    ///         │       ├─ OnProductsFetched -> 目録取得完了
-    ///         │       │   └─ FetchPurchases() 注文取得
-    ///         │       │       ├─ OnPurchasesFetched -> 注文取得完了(初期化完了)
-    ///         │       │       └─ OnPurchasesFetchFailed -> 注文取得失敗
-    ///         │       └─ OnProductsFetchFailed -> 目録取得失敗
+    ///         │   ├─ FetchProducts() 目録取得
+    ///         │   │   ├─ OnProductsFetched -> 目録取得完了
+    ///         │   │   │   └─ CheckEntitlement() 所有確認
+    ///         │   │   │       └─ OnCheckEntitlement -> 所有状況
+    ///         │   │   └─ OnProductsFetchFailed -> 目録取得失敗
+    ///         │   └─ FetchPurchases() 注文取得
+    ///         │       ├─ OnPurchasesFetched -> 注文取得完了(初期化完了)
+    ///         │       └─ OnPurchasesFetchFailed -> 注文取得失敗
     ///         └─ OnStoreDisconnected -> 接続失敗
     /// 購入フロー
     ///     PurchaseProduct() 発注
-    ///         ├─ OnPurchaseDeferred -> 待機(時間差でOnPurchasePendingが呼ばれる)
-    ///         ├─ OnPurchasePending 受付(確定可能)
-    ///         │   │  権利付与 (消費財ならアプリへ制御を戻す)
+    ///         ├─ OnPurchaseDeferred -> 承認待機(アプリへ制御を戻す、時間差でOnPurchasePendingが呼ばれる)
+    ///         ├─ OnPurchasePending -> 権利付与 (消費財ならアプリへ制御を戻す)
     ///         │   └─ ConfirmPurchase() 確定 (消耗品の消費)
     ///         │       └─ OnPurchaseConfirmed 結果
     ///         │           ├─ ConfirmedOrder -> 購入完了(成功)
@@ -91,22 +104,25 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
     public class Purchaser {
 		#region Static
 		/// <summary>シングルトン</summary>
-		private static Purchaser? instance;
+		private static Purchaser instance = new ();
 
         /// <summary>所有目録 製品の課金状況一覧、消費タイプは未消費を表す</summary>
         public static Inventory Inventory { get; private set; } = new ();
 
         /// <summary>有効 初期化が完了している</summary>
-        public static bool IsValid => instance is not null && Status == PurchaseStatus.AVAILABLE;
+        public static bool IsValid => Status == PurchaseStatus.AVAILABLE;
 
 		/// <summary>初期化状況</summary>
 		public static PurchaseStatus Status { get; private set; } = PurchaseStatus.NOTINIT;
+
+        /// <summary>製品定義</summary>
+        private static List<ProductDefinition> ProductDefinitions { get; set; } = new ();
 
         /// <summary>ストアから得た製品目録</summary>
         public static List<Product> Products { get; private set; } = new ();
 
         /// <summary>処理中</summary>
-        public static bool IsPurchasing => IsValid && instance!.isPurchasing;
+        public static bool IsPurchasing => IsValid && instance.isPurchasing;
 
         /// <summary>IDから製品を得る</summary>
         /// <param name="productID">製品ID</param>
@@ -144,18 +160,17 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             Debug.Log ($"初期化({Status}): [{products?.Count () ?? 0}] {onInitialized is not null}");
             if (products is not null && IsValid) {
                 // 再初期化要求
-                instance = null;
                 Status = PurchaseStatus.NOTINIT;
             }
-            products ??= instance?.productsDefinitions ?? new ();
+            products ??= ProductDefinitions ?? new ();
+            ProductDefinitions = products.ToList ();
             onInitialized ??= OnInitialized;
             OnInitialized = onInitialized;
             // IAPを初期化する
-            var collection = products.ToList ();
             if (IsValid) {
                 Debug.LogWarning ("既に初期化済み");
                 onInitialized?.Invoke (true);
-            } else if (collection.Count < 1) {
+            } else if (ProductDefinitions.Count < 1) {
                 Debug.LogWarning ("製品定義が空");
                 Status = PurchaseStatus.UNAVAILABLE;
                 onInitialized?.Invoke (false);
@@ -169,13 +184,11 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     var options = new InitializationOptions ().SetEnvironmentName ("production");
                     await UnityServices.InitializeAsync (options);
                     // IAPを初期化
-                    instance = new Purchaser (collection);
                     await instance.ConnectAsync ();
                     onInitialized?.Invoke (IsValid);
                 }
                 catch (Exception exception) {
 					Debug.LogError ($"An error occurred during services initialization. {exception.Message}\n{exception.StackTrace}");
-					instance = null;
 					Status = PurchaseStatus.UNAVAILABLE;
 					onInitialized?.Invoke (false);
 					return false;
@@ -184,28 +197,48 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 			return IsValid;
 		}
 
-        /// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-        public static bool ConfirmPendingPurchase (string productId) => IsValid ? instance!.ConfirmPurchase (productId) : false;
-
-        /// <summary>保留した課金の完了 消費タイプの指定製品の保留していた消費を完了する</summary>
-        public static bool ConfirmPendingPurchase (Product product) => ConfirmPendingPurchase (product.definition.id);
-
 		/// <summary>復元 課金情報の復元を行い、失敗を含めて結果のコールバックを得る</summary>
 		public static async Task<bool> RestoreAsync (Action<bool, string?>? onRestored = null) {
-			if (IsValid && Application.platform == RuntimePlatform.IPhonePlayer) {
-                instance!.RestoreTransactions (onRestored);
-                await TaskEx.DelayWhile (() => IsPurchasing); // 処理完了を待つ
-                return instance!.RestrationResult;
+			if (IsValid) {
+                if (Application.platform == RuntimePlatform.IPhonePlayer) {
+                    instance.RestoreTransactions ();
+                    await TaskEx.DelayWhile (() => IsPurchasing); // 処理完了を待つ
+                } else {
+                    instance.RestrationResult = true;
+                }
+                await instance.FetchProducts ();
+                onRestored?.Invoke (instance.RestrationResult, instance.RestrationError);
+                return instance.RestrationResult;
             } else {
                 onRestored?.Invoke (false, $"不適合: {Application.platform}");
                 return false;
 			}
 		}
 
-        /// <summary>所有/未消費の確認</summary>
-        public static bool IsStocked (string productId) => IsValid && (instance!.PendingOrder.ContainsKey (productId) || Inventory.Contains (productId));
+        /// <summary>所有状態</summary>
+        public static EntitlementStatus CheckEntitlement (string productId)
+            => IsValid 
+                ? IsConsumable (productId)
+                    ? EntitlementStatus.EntitledUntilConsumed // 未消費
+                    : IsDeferred (productId) 
+                        ? EntitlementStatus.EntitledButNotFinished // 承認待ち
+                        : Inventory [productId] // 所持/不所持
+                : EntitlementStatus.Unknown // 不明
+            ;
 
-        /// <summary>所有/未消費の確認</summary>
+        /// <summary>所有/未消費/未承認の不在</summary>
+        public static bool IsPurchasable (string productId) => !IsStocked (productId) && !IsDeferred (productId);
+
+        /// <summary>未承認</summary>
+        public static bool IsDeferred (string productId) => IsValid && instance.DeferredOrder.ContainsKey (productId);
+
+        /// <summary>未消費</summary>
+        public static bool IsConsumable (string productId) => IsValid && instance.PendingOrder.ContainsKey (productId);
+
+        /// <summary>所有/未消費</summary>
+        public static bool IsStocked (string productId) => IsConsumable (productId) || IsValid && Inventory.Contains (productId);
+
+        /// <summary>所有/未消費</summary>
         public static bool IsStocked (Product product) => IsStocked (product.definition.id);
 
         /// <summary>発注</summary>
@@ -228,7 +261,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                 await InitializeAsync ();
             }
             if (IsValid) {
-                if (instance!.Purchase (productId)) {
+                if (instance.Purchase (productId)) {
                     await TaskEx.DelayWhile (() => IsPurchasing); // 購入処理完了(保留を含む)を待つ
                     var success = Result.IsSuccess;
                     onPurchased?.Invoke (success);
@@ -250,8 +283,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
         public static async Task<bool> ConfirmPurchaseAsync (string productId, Action<bool>? onPurchased = null) {
-            if (IsValid && instance!.ConfirmPurchase (productId)) {
-                await TaskEx.DelayWhile (() => IsPurchasing); // 購入処理完了を待つ
+            if (IsValid && await instance.ConfirmPurchase (productId)) {
                 var success = Result == PurchaseResult.SUCCESS;
                 onPurchased?.Invoke (success);
                 return success;
@@ -263,21 +295,19 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
         /// <summary>コントローラー</summary>
         private StoreController controller;
-
-        /// <summary>製品定義</summary>
-        List<ProductDefinition> productsDefinitions;
         
         /// <summary>インスタンスが処理中(排他制御)</summary>
         private bool isPurchasing;
 
         /// <summary>消費の保留中の注文</summary>
-        private Dictionary<string?, PendingOrder> PendingOrder { get; set; } = new ();
+        private Dictionary<string, PendingOrder> PendingOrder { get; set; } = new ();
+
+        /// <summary>承認待機中の注文</summary>
+        private Dictionary<string, DeferredOrder> DeferredOrder { get; set; } = new ();
 
         /// <summary>コンストラクタ</summary>
-        public Purchaser (List<ProductDefinition> products) {
+        private Purchaser () {
             Debug.Log ("生成");
-            // 製品定義
-            productsDefinitions = products;
             // コントローラを取得
             controller = UnityIAPServices.StoreController ();
             // 購入開始イベント
@@ -309,16 +339,21 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             Debug.Log ("初期化開始");
             await controller.Connect ();
             // 完了を待機
-            await TaskEx.DelayWhile (() => Status == PurchaseStatus.NOTINIT);
+            await TaskEx.DelayWhile (() => Status == PurchaseStatus.NOTINIT || Status == PurchaseStatus.OFFLINE);
             Debug.Log ($"初期化完了 {Status}");
         }
 
         /// <summary>ストアに接続した</summary>
-        void OnStoreConnected () {
-            // 製品一覧を取得
+        async void OnStoreConnected () {
             Debug.Log ("接続");
-            Inventory.Clear ();
-            controller.FetchProducts (productsDefinitions);
+            // 製品一覧を取得
+            if (await FetchProducts ()) {
+                // 注文状況の取得へ
+                controller.FetchPurchases ();
+            } else {
+                // 取得に失敗したため初期化失敗
+                Status = PurchaseStatus.UNAVAILABLE;
+            }
         }
 
         /// <summary>ストアから切断された</summary>
@@ -328,30 +363,55 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             Status = PurchaseStatus.OFFLINE;
         }
 
-        /// <summary>目録を取得した</summary>
-        /// <param name="products">製品</param>
-        void OnProductsFetched (List<Product> products) {
-            Products = products;
-            UpdateInventory (products);
-            Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.definition.id} / {x.definition.type}"))}");
-            controller.FetchPurchases ();
+        /// <summary>目録を取得中</summary>
+        bool isFetchingProducts;
+
+        /// <summary>目録を取得</summary>
+        /// <returns>成否</returns>
+        private async Task<bool> FetchProducts () {
+            if (!isFetchingProducts) {
+                Debug.Log ("目録請求");
+                isFetchingProducts = true;
+                Products.Clear ();
+                Inventory.Clear ();
+                controller.FetchProducts (ProductDefinitions);
+            }
+            await TaskEx.DelayWhile (() => isFetchingProducts);
+            return Products.Count > 0;
         }
 
+        /// <summary>目録を取得した</summary>
+        /// <param name="products">製品</param>
+        async void OnProductsFetched (List<Product> products) {
+            Products = products;
+            await UpdateInventory (products);
+            Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.definition.id} / {x.definition.type}"))}");
+            isFetchingProducts = false;
+        }
+
+        /// <summary>所有確認中の数</summary>
+        int checkingEntitlementCount;
+
         /// <summary>所有状態の更新</summary>
-        void UpdateInventory (IEnumerable<Product> products) {
+        async Task UpdateInventory (IEnumerable<Product> products) {
+            Debug.Log ("所有確認");
             foreach (Product product in products) {
+                checkingEntitlementCount++;
                 controller.CheckEntitlement (product);
             }
+            // 確認完了待つ
+            await TaskEx.DelayWhile (() => checkingEntitlementCount > 0);
         }
 
         /// <summary>所有確認</summary>
         /// <param name="entitlement">所有状態</param>
         void OnCheckEntitlement (Entitlement entitlement) {
             if (entitlement.Product is not null) {
-                Inventory [entitlement.Product] = entitlement.Status == EntitlementStatus.FullyEntitled || entitlement.Status == EntitlementStatus.EntitledUntilConsumed;
+                Inventory [entitlement.Product] = entitlement.Status;
                 // 実消費の消耗品でも`EntitledUntilConsumed`にはならない様子
             }
             Debug.Log ($"所有: '{entitlement.Product?.definition.id}' {entitlement.Status}");
+            checkingEntitlementCount--;
         }
 
         /// <summary>目録の取得に失敗した</summary>
@@ -359,7 +419,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         void OnProductsFetchFailed (ProductFetchFailed failed) {
             Products = new ();
             Debug.Log ($"目録失敗: {failed.FailureReason}");
-            Status = PurchaseStatus.UNAVAILABLE;
+            isFetchingProducts = false;
         }
 
         /// <summary>注文状況取得</summary>
@@ -393,9 +453,11 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                 }
                 products.Add (item.Product);
             }
+            // 承認待ちから抹消
+            DeferredOrder.Remove (firstProductId!);
             if (consumable) {
                 // 消耗品なら消費を保留して終了
-                PendingOrder [firstProductId] = order;
+                PendingOrder [firstProductId!] = order;
                 Result = PurchaseResult.Pending;
                 isPurchasing = false;
             } else {
@@ -406,36 +468,45 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
         /// <summary>保留中の注文を完了(消耗品の消費)</summary>
         /// <returns>保留中の注文の有無</returns>
-        public bool ConfirmPurchase (string productId) {
+        public async Task<bool> ConfirmPurchase (string productId) {
             Debug.Log ($"消費: {productId}");
             if (PendingOrder.ContainsKey (productId)) {
-                Result = PurchaseResult.Purchasing;
+                Result = PurchaseResult.Confirming;
                 // ストア側に「購入処理の完了」を通知
                 controller.ConfirmPurchase (PendingOrder [productId]);
+                await TaskEx.DelayWhile (() => Result == PurchaseResult.Confirming); // 確認完了を待つ
                 PendingOrder.Remove (productId);
                 return true;
             }
-            Debug.Log ("完了済");
+            Debug.Log ("該当の注文が見つからない");
+            Result = PurchaseResult.NotFound;
             return false;
         }
 
         /// <summary>購入完了</summary>
         /// <param name="order">注文</param>
-        void OnPurchaseConfirmed (Order order) {
+        async void OnPurchaseConfirmed (Order order) {
             var products = order.CartOrdered.Items ().ToList ().ConvertAll (x => x.Product);
             var ids = string.Join (", ", products.ConvertAll (x => $"{x.definition?.id}"));
             switch (order) {
                 case FailedOrder failedOrder:
                     // 失敗の派生クラス
-                    Debug.Log ($"購入完了失敗: {order.Info.Receipt} {ids}, {failedOrder.FailureReason}, {failedOrder.Details}");
+                    Debug.Log ($"購入完了失敗: Receipt={order.Info.Receipt} Items={ids}, Reason={failedOrder.FailureReason}, Order={failedOrder.Details}");
+                    if (failedOrder.FailureReason == PurchaseFailureReason.Unknown && failedOrder.Details.Contains ("not found")) {
+                        Result = PurchaseResult.NotFound;
+                    } else {
+                        Result = failedOrder.FailureReason;
+                    }
                     break;
                 case ConfirmedOrder confirmedOrder:
                     // 完了の派生クラス
-                    UpdateInventory (products);
+                    await UpdateInventory (products);
                     Debug.Log ($"購入完了:  {order.Info.Receipt} {ids}");
+                    Result = PurchaseResult.SUCCESS;
                     break;
                 default:
                     Debug.Log ($"不明な購入完了結果: {order.Info.Receipt} {order.GetType ()}");
+                    Result = PurchaseResult.ERROR;
                     break;
             }
             isPurchasing = false;
@@ -444,8 +515,8 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>購入失敗</summary>
         /// <param name="order">失敗した注文</param>
         void OnPurchaseFailed (FailedOrder order) {
-            Debug.Log ($"購入失敗: {order.Info.Receipt} {order.Details}");
-            Result = PurchaseFailureReason.UserCancelled;
+            Debug.Log ($"購入失敗: {order.FailureReason} / {order.Info.Receipt} {order.Details}");
+            Result = order.FailureReason;
             isPurchasing = false;
         }
 
@@ -453,16 +524,19 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <param name="order">承認の必要な注文</param>
         void OnPurchaseDeferred (DeferredOrder order) {
             Debug.Log ($"承認待機: {order.Info.Receipt}");
+            var firstProductId = order.CartOrdered.Items ().FirstOrDefault ()?.Product.definition.id;
+            DeferredOrder [firstProductId!] = order;
+            Result = PurchaseResult.Deferring;
             isPurchasing = false;
         }
 
         /// <summary>発注</summary>
         /// <param name="productId">対象製品ID</param>
-        public bool Purchase (string productId) {
+        private bool Purchase (string productId) {
             Debug.Log ($"発注: {productId}");
             if (PurchaseAvailable) {
                 var product = Products.Find (x => x.definition.id == productId);
-                if (instance!.PendingOrder.ContainsKey (productId) == true) {
+                if (instance.PendingOrder.ContainsKey (productId) == true) {
                     Debug.Log ("保留中");
                     Result = PurchaseFailureReason.ExistingPurchasePending;
                 } else if (Inventory.Contains (productId)) {
@@ -483,10 +557,10 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
         /// <summary>発注</summary>
         /// <param name="product">対象製品</param>
-        public bool Purchase (Product product) {
+        private bool Purchase (Product product) {
             Debug.Log ($"発注: {product.definition.id}");
             if (PurchaseAvailable) {
-                if (instance!.PendingOrder.ContainsKey (product.definition.id) == true) {
+                if (instance.PendingOrder.ContainsKey (product.definition.id) == true) {
                     Debug.Log ("保留中");
                     Result = PurchaseFailureReason.ExistingPurchasePending;
                 } else if (Inventory.Contains (product.definition.id)) {
@@ -513,10 +587,10 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     Result = PurchaseResult.Disconnected;
                 } else if (!IsValid) {
                     Debug.Log ("未初期化");
-                    Result = PurchaseResult.NotValid;
+                    Result = PurchaseResult.Unavailable;
                 } else if (isPurchasing) {
                     Debug.Log ("購入中");
-                    Result = PurchaseFailureReason.ExistingPurchasePending;
+                    Result = PurchaseResult.Busy;
                 } else {
                     return true;
                 }
@@ -524,18 +598,19 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             }
         }
 
-        /// <summary>復元完了処理</summary>
-        Action<bool, string?>? onRestored;
-
         /// <summary>復元の成否</summary>
         bool RestrationResult;
+
+        /// <summary>復元エラー</summary>
+        string? RestrationError;
 
         /// <summary>復元</summary>
         /// <remarks>呼び出し側でプラットフォームや初期化状況の確認が必要</remarks>
         /// <param name="onRestored">完了通知(成否を問わず)</param>
-        private void RestoreTransactions (Action<bool, string?>? onRestored = null) {
+        private void RestoreTransactions () {
             isPurchasing = true;
-            this.onRestored = onRestored;
+            RestrationResult = false;
+            RestrationError = null;
             controller.RestoreTransactions (OnTransactionsRestored);
         }
 
@@ -545,7 +620,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         void OnTransactionsRestored (bool success, string? error) {
             Debug.Log (success ? "復元成功" : $"復元失敗: {error}");
             RestrationResult = success;
-            onRestored?.Invoke (success, error);
+            RestrationError = error;
             isPurchasing = false;
         }
 	}	// Purchaser
@@ -583,11 +658,17 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 	}	// ProductExtentions
 
 	/// <summary>productID基準でProductの所有を表現する辞書</summary>
-	public class Inventory : Dictionary<string, bool> {
+	public class Inventory : Dictionary<string, EntitlementStatus> {
 
-		/// <summary>Productによるアクセス</summary>
-		public bool this [Product product] {
-			get => base [product.definition.id];
+        /// <summary>Productによるアクセス</summary>
+        public new EntitlementStatus this [string productId] {
+            get => ContainsKey (productId) ? base [productId] : EntitlementStatus.Unknown;
+            set => base [productId] = value;
+        }
+
+        /// <summary>Productによるアクセス</summary>
+        public EntitlementStatus this [Product product] {
+			get => ContainsKey (product.definition.id) ? base [product.definition.id] : EntitlementStatus.Unknown;
 			set => base [product.definition.id] = value;
 		}
 
@@ -597,12 +678,12 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>所有</summary>
         /// <param name="productId">製品ID</param>
         /// <returns>有無</returns>
-        public bool Contains (string productId) => TryGetValue (productId, out var value) ? value : false;
+        public bool Contains (string productId) => this [productId] == EntitlementStatus.FullyEntitled;
 
         /// <summary>所有</summary>
         /// <param name="product">製品</param>
         /// <returns>有無</returns>
-        public bool Contains (Product product) => TryGetValue (product.definition.id, out var value) ? value : false;
+        public bool Contains (Product product) => Contains (product.definition.id);
 
     }	// Inventory
 

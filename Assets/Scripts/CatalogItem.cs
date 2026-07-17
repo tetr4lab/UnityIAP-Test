@@ -8,7 +8,7 @@ using Tetr4lab.UnityEngine.InAppPuchaser;
 /// <summary>表示用アイテム目録の要素</summary>
 public class CatalogItem : MonoBehaviour {
 
-	#region Static
+    #region Static
 
 	private static GameObject prefab;
 
@@ -24,7 +24,7 @@ public class CatalogItem : MonoBehaviour {
 		return null;
 	}
 
-	#endregion
+    #endregion
 
 	[SerializeField] private Text ID = default;
 	[SerializeField] private Text Title = default;
@@ -35,7 +35,7 @@ public class CatalogItem : MonoBehaviour {
 
 	private Product product;
 	private bool valid;
-	private bool lastHas;
+	private EntitlementStatus lastEntitlement;
 
 	private void init (Product product, UnityAction<Product> onPushBuyButton, UnityAction<Product> onPushConsumeButton) {
 		this.product = product;
@@ -48,16 +48,24 @@ public class CatalogItem : MonoBehaviour {
 		Consume.onClick.RemoveAllListeners ();
 		Consume.onClick.AddListener (() => onPushConsumeButton (product));
 		valid = product.IsValid ();
-		lastHas = !Purchaser.IsStocked (product);
+		lastEntitlement = EntitlementStatus.Unknown;
 	}
 
 	private void Update () {
-		var has = Purchaser.IsStocked (product);
-		if (product != null && (lastHas != has)) {
-			ID.color = Title.color = Description.color = Price.color = valid ? (has ? Color.grey : Color.white) : Color.red;
-			Buy.interactable = valid && !has;
-			Consume.gameObject.SetActive (Consume.interactable = valid && product.definition.type == ProductType.Consumable && has);
-			lastHas = has;
+		var entitlement = Purchaser.CheckEntitlement (product.definition.id);
+		if (product != null && (lastEntitlement != entitlement)) {
+            Debug.Log ($"所有状態: {ID.text} {lastEntitlement} -> {entitlement}");
+			ID.color = Title.color = Description.color = Price.color = valid ? entitlement switch {
+                EntitlementStatus.NotEntitled => Color.white, // 不所持
+                EntitlementStatus.FullyEntitled => Color.green, // 所持
+                EntitlementStatus.EntitledUntilConsumed => Color.cyan, // 未消費
+                EntitlementStatus.EntitledButNotFinished => Color.yellow, // 承認待ち
+                _ => Color.grey,
+            } : Color.red;
+			Buy.interactable = valid && entitlement == EntitlementStatus.NotEntitled;
+            Consume.interactable = valid && entitlement == EntitlementStatus.EntitledUntilConsumed;
+            Consume.gameObject.SetActive (Consume.interactable);
+			lastEntitlement = entitlement;
 		}
 	}
 
