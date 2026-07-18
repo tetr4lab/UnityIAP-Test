@@ -1,4 +1,5 @@
-<Solution>
+﻿<Solution>
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="org.tetr4lab.unity.iap.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
 </Solution>

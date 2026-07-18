@@ -24,14 +24,15 @@ public class Store : MonoBehaviour {
 #if ALLOW_UIAP
 	/// <summary>製品目録 (製品定義(IDと種別)の羅列)</summary>
 	private readonly ProductDefinition [] products = new [] {
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item1", ProductType.Consumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item2", ProductType.NonConsumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item3", ProductType.NonConsumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item4", ProductType.NonConsumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
-            new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
-            //new ProductDefinition ("jp.nyanta.tetr4lab.unityiaptest.item7", ProductType.NonConsumable),
-		};
+            //new ProductDefinition ("org.tetr4lab.unityiaptest.item1", ProductType.Consumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item2", ProductType.Consumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item3", ProductType.NonConsumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item4", ProductType.NonConsumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item5", ProductType.NonConsumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item6", ProductType.NonConsumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item7", ProductType.Consumable),
+            new ProductDefinition ("org.tetr4lab.unityiaptest.item8", ProductType.Consumable),
+        };
 #endif
 
 	/// <summary>起動</summary>
