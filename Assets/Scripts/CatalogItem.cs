@@ -55,14 +55,15 @@ public class CatalogItem : MonoBehaviour {
 		var entitlement = Purchaser.CheckEntitlement (product.definition.id);
 		if (product != null && (lastEntitlement != entitlement)) {
             Debug.Log ($"所有状態: {ID.text} {lastEntitlement} -> {entitlement}");
-			ID.color = Title.color = Description.color = Price.color = valid ? entitlement switch {
+			ID.color = Title.color = Description.color = valid ? entitlement switch {
                 EntitlementStatus.NotEntitled => Color.white, // 不所持
                 EntitlementStatus.FullyEntitled => Color.green, // 所持
                 EntitlementStatus.EntitledUntilConsumed => Color.cyan, // 未消費
                 EntitlementStatus.EntitledButNotFinished => Color.yellow, // 承認待ち
                 _ => Color.grey,
             } : Color.red;
-			Buy.interactable = valid && entitlement == EntitlementStatus.NotEntitled;
+            Price.color = product.definition.type == ProductType.Consumable ? Color.cyan : Color.green;
+            Buy.interactable = valid && entitlement == EntitlementStatus.NotEntitled;
             Consume.interactable = valid && entitlement == EntitlementStatus.EntitledUntilConsumed;
             Consume.gameObject.SetActive (Consume.interactable);
 			lastEntitlement = entitlement;
