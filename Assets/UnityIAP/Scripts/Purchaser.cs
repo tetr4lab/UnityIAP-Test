@@ -174,7 +174,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                 Status = PurchaseStatus.UNAVAILABLE;
                 onInitialized?.Invoke (false);
             } else if (!Tetr4labUtility.IsNetworkAvailable) {
-                Debug.LogWarning ("インターネットに接続していない");
+                Debug.LogWarning ("ネットワークに接続していない");
                 Status = PurchaseStatus.OFFLINE;
                 onInitialized?.Invoke (false);
             } else {
@@ -203,10 +203,18 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     instance.RestoreTransactions ();
                     await TaskEx.DelayWhile (() => IsPurchasing); // 処理完了を待つ
                 } else {
-                    instance.RestrationResult = true;
+                    if (Tetr4labUtility.IsNetworkAvailable) {
+                        instance.RestrationResult = true;
+                        instance.RestrationError = null;
+                    } else {
+                        instance.RestrationResult = false;
+                        instance.RestrationError = "offline";
+                    }
                 }
-                await instance.FetchProducts ();
-                await instance.FetchPurchases ();
+                if (instance.RestrationResult) {
+                    await instance.FetchProducts ();
+                    await instance.FetchPurchases ();
+                }
                 onRestored?.Invoke (instance.RestrationResult, instance.RestrationError);
                 return instance.RestrationResult;
             } else {
@@ -500,6 +508,11 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <returns>保留中の注文の有無</returns>
         public async Task<bool> ConfirmPurchase (string productId) {
             Debug.Log ($"消費: {productId}");
+            if (!Tetr4labUtility.IsNetworkAvailable) {
+                Debug.Log ("ネットワークに接続していない");
+                Result = PurchaseResult.Disconnected;
+                return false;
+            }
             if (PendingOrder.ContainsKey (productId)) {
                 Result = PurchaseResult.Confirming;
                 // ストア側に「購入処理の完了」を通知
@@ -613,7 +626,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         private bool PurchaseAvailable {
             get {
                 if (!Tetr4labUtility.IsNetworkAvailable) {
-                    Debug.Log ("インターネットへの接続経路がない");
+                    Debug.Log ("ネットワークに接続していない");
                     Result = PurchaseResult.Disconnected;
                 } else if (!IsValid) {
                     Debug.Log ("未初期化");
@@ -638,10 +651,17 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <remarks>呼び出し側でプラットフォームや初期化状況の確認が必要</remarks>
         /// <param name="onRestored">完了通知(成否を問わず)</param>
         private void RestoreTransactions () {
-            isPurchasing = true;
-            RestrationResult = false;
-            RestrationError = null;
-            controller.RestoreTransactions (OnTransactionsRestored);
+            if (Tetr4labUtility.IsNetworkAvailable) {
+                isPurchasing = true;
+                RestrationResult = false;
+                RestrationError = null;
+                controller.RestoreTransactions (OnTransactionsRestored);
+            } else {
+                Debug.Log ("ネットワークに接続していない");
+                RestrationResult = false;
+                RestrationError = "offline";
+                isPurchasing = false;
+            }
         }
 
         /// <summary>復元完了</summary>
