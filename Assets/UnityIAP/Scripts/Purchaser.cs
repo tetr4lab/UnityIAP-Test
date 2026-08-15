@@ -394,7 +394,24 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>目録を取得した</summary>
         /// <param name="products">製品</param>
         async void OnProductsFetched (List<Product> products) {
-            Products = products;
+            // アイテム定義の順にインデックスを列挙
+            var indexes = new int [ProductDefinitions.Count];
+            Array.Fill (indexes, -1);
+            for (var i = 0; i < products.Count; i++) {
+                var index = ProductDefinitions.FindIndex (x => x.id == products [i].definition.id);
+                if (index >= 0) {
+                    indexes [index] = i;
+                } else {
+                    Debug.Log ($"未定義製品: {products [i].definition.id} / {products [i].definition.type}");
+                }
+            }
+            // アイテムを列挙 (未定義アイテムは除去される)
+            Products.Clear();
+            for (var i = 0; i < indexes.Length; i++) {
+                if (indexes [i] >= 0) {
+                    Products.Add (products [indexes [i]]);
+                }
+            }
             await UpdateInventory (products);
             Debug.Log ($"目録:\n{string.Join ('\n', products.ConvertAll (x => $"製品: {x.definition.id} / {x.definition.type}"))}");
             isFetchingProducts = false;
