@@ -73,10 +73,9 @@ public class Store : MonoBehaviour {
     /// <summary>購入ボタン</summary>
     public async void OnPushBuyButon (Product product) {
 		WaitIndicator.display = true;
-		await Purchaser.PurchaseAsync (product, success => {
-            InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
-        });
-		if (Purchaser.Result == PurchaseFailureReason.UserCancelled) {
+		var success = await Purchaser.PurchaseAsync (product);
+        InfoPanel.text = success ? "Success" : $"{Purchaser.Result}";
+        if (Purchaser.Result == PurchaseFailureReason.UserCancelled) {
             // ユーザによるキャンセル(UserCancelledでなくOrderCancelledが戻る)
             WaitIndicator.display = false;
 		} else {
@@ -101,10 +100,10 @@ public class Store : MonoBehaviour {
 	}
 
 	/// <summary>復元ボタン</summary>
-	public async void OnPushRestoreButton () {
+	public void OnPushRestoreButton () {
 		if (!Purchaser.IsValid) { return; } // 未初期化なら離脱
 		WaitIndicator.display = true;
-		await Purchaser.RestoreAsync ((success, message) => {
+		Purchaser.Restore ((success, message) => {
 			InfoPanel.text = success ? "Restored" : "Failure";
 			if (success) {
 				// カタログを再生成

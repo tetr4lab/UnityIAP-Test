@@ -115,7 +115,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 		public static PurchaseStatus Status { get; private set; } = PurchaseStatus.NOTINIT;
 
         /// <summary>製品定義</summary>
-        private static List<ProductDefinition> ProductDefinitions { get; set; } = new ();
+        private static List<ProductDefinition>? ProductDefinitions { get; set; }
 
         /// <summary>ストアから得た製品目録</summary>
         public static List<Product> Products { get; private set; } = new ();
@@ -134,70 +134,73 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>初期化通過時の処理 (複数の実行機会)</summary>
         //private static Action<bool>? onInitialized;
 
-        /// <summary>クラスを初期化を開始してコールバックを得る (ノンブロック)</summary>
+        /// <summary>クラスを初期化してコールバックを得る (ノンブロック)</summary>
+        /// <remarks>
+        /// クラスはシングルトンとして振る舞います。<br/>
+        /// 既に初期化済みの場合の再初期化、製品定義の上書きはできません。<br/>
+        /// 初回初期化時にオフラインだった場合は、オンラインになってから製品定義なしで呼ぶことで初期化を完了できます。
+        /// 既に初期化中ならコールバックなしで失敗します。それ以外は結果の成否を問わず必ずコールバックがあります。<br/>
+        /// </remarks>
         /// <param name="products">製品定義</param>
-        /// <param name="onInitialized">完了時コールバックハンドラ</param>
-        public static async void Initialize (IEnumerable<ProductDefinition> products, Action<bool> onInitialized) {
-            await InitializeAsync (products, onInitialized);
+        /// <param name="onInitialized">コールバックハンドラ</param>
+        public static async void Initialize (IEnumerable<ProductDefinition>? products = null, Action<bool>? onInitialized = null) {
+            var success = await InitializeAsync (products);
+            onInitialized?.Invoke (success);
         }
-
-        /// <summary>初期化完了通知</summary>
-        private static Action<bool>? OnInitialized { get; set; }
 
         /// <summary>クラスを初期化して結果を得る</summary>
         /// <remarks>
         /// クラスはシングルトンとして振る舞います。<br/>
-        /// 既に初期化済みの場合に製品定義を再度渡すと再初期化を試行します。<br/>
+        /// 既に初期化済みの場合の再初期化、製品定義の上書きはできません。<br/>
         /// 初回初期化時にオフラインだった場合は、オンラインになってから引数なしで呼ぶことで初期化を完了できます。
-        /// (製品定義や完了時コールバックハンドラの上書きはできません。)<br/>
-        /// `Status != PurchaseStatus.NOTINIT`の場合にコールバックがあります。<br/>
         /// </remarks>
         /// <param name="products">製品定義</param>
-        /// <param name="onInitialized">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static async Task<bool> InitializeAsync (IEnumerable<ProductDefinition>? products = null, Action<bool>? onInitialized = null) {
-            Debug.Log ($"初期化({Status}): [{products?.Count () ?? 0}] {onInitialized is not null}");
-            if (products is not null && IsValid) {
-                // 再初期化要求
-                Status = PurchaseStatus.NOTINIT;
-            }
-            products ??= ProductDefinitions ?? new ();
-            ProductDefinitions = products.ToList ();
-            onInitialized ??= OnInitialized;
-            OnInitialized = onInitialized;
-            // IAPを初期化する
-            if (IsValid) {
-                Debug.LogWarning ("既に初期化済み");
-                onInitialized?.Invoke (true);
-            } else if (ProductDefinitions.Count < 1) {
-                Debug.LogWarning ("製品定義が空");
-                Status = PurchaseStatus.UNAVAILABLE;
-                onInitialized?.Invoke (false);
-            } else if (!Tetr4labUtility.IsNetworkAvailable) {
-                Debug.LogWarning ("ネットワークに接続していない");
-                Status = PurchaseStatus.OFFLINE;
-                onInitialized?.Invoke (false);
-            } else {
-                try {
+        public static async Task<bool> InitializeAsync (IEnumerable<ProductDefinition>? products = null) {
+            if (_isInitializing) { return false; }
+            _isInitializing = true;
+            try {
+                ProductDefinitions ??= products?.ToList () ?? new ();
+                Debug.Log ($"初期化({Status}): [{ProductDefinitions.Count}] ({products is not null})");
+                // IAPを初期化する
+                if (IsValid) {
+                    Debug.LogWarning ("既に初期化済み");
+                } else if (ProductDefinitions.Count < 1) {
+                    Debug.LogWarning ("製品定義が空");
+                    Status = PurchaseStatus.UNAVAILABLE;
+                } else if (!Tetr4labUtility.IsNetworkAvailable) {
+                    Debug.LogWarning ("ネットワークに接続していない");
+                    Status = PurchaseStatus.OFFLINE;
+                } else {
                     // Servicesを初期化
-                    var options = new InitializationOptions ().SetEnvironmentName ("production");
-                    await UnityServices.InitializeAsync (options);
+                    if (UnityServices.State == ServicesInitializationState.Uninitialized) {
+                        var options = new InitializationOptions ().SetEnvironmentName ("production");
+                        await UnityServices.InitializeAsync (options);
+                    }
                     // IAPを初期化
                     await instance.ConnectAsync ();
-                    onInitialized?.Invoke (IsValid);
                 }
-                catch (Exception exception) {
-					Debug.LogError ($"An error occurred during services initialization. {exception.Message}\n{exception.StackTrace}");
-					Status = PurchaseStatus.UNAVAILABLE;
-					onInitialized?.Invoke (false);
-					return false;
-				}
             }
-			return IsValid;
-		}
+            catch (Exception exception) {
+                Debug.LogError ($"An error occurred during services initialization. {exception.Message}\n{exception.StackTrace}");
+                Status = PurchaseStatus.UNAVAILABLE;
+            }
+            finally {
+                _isInitializing = false;
+            }
+            return IsValid;
+        }
+        /// <summary>初期化中</summary>
+        protected static bool _isInitializing;
 
-		/// <summary>復元 課金情報の復元を行い、失敗を含めて結果のコールバックを得る</summary>
-		public static async Task<bool> RestoreAsync (Action<bool, string?>? onRestored = null) {
+        /// <summary>課金情報を復元をして結果のコールバックを得る</summary>
+        public static async void Restore (Action<bool, string?>? onRestored = null) {
+            var (success, error) = await RestoreAsync ();
+            onRestored?.Invoke (success, error);
+        }
+
+        /// <summary>課金情報の復元</summary>
+        public static async Task<(bool success, string? error)> RestoreAsync () {
 			if (IsValid) {
                 if (Application.platform == RuntimePlatform.IPhonePlayer || Application.platform == RuntimePlatform.tvOS) {
                     instance.RestoreTransactions ();
@@ -215,11 +218,9 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     await instance.FetchProducts ();
                     await instance.FetchPurchases ();
                 }
-                onRestored?.Invoke (instance.RestrationResult, instance.RestrationError);
-                return instance.RestrationResult;
+                return (instance.RestrationResult, instance.RestrationError);
             } else {
-                onRestored?.Invoke (false, $"不適合: {Application.platform}");
-                return false;
+                return (false, null);
 			}
 		}
 
@@ -249,20 +250,34 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>所有/未消費</summary>
         public static bool IsStocked (Product product) => IsStocked (product.definition.id);
 
+        /// <summary>課金を開始してコールバックを得る</summary>
+        /// <param name="product">製品</param>
+        /// <param name="onPurchased">完了時コールバックハンドラ</param>
+        public static async void Purchase (Product product, Action<bool> onPurchased) {
+            var success = await PurchaseAsync (product);
+            onPurchased?.Invoke (success);
+        }
+
+        /// <summary>課金を開始してコールバックを得る</summary>
+        /// <param name="productID">製品ID</param>
+        /// <param name="onPurchased">完了時コールバックハンドラ</param>
+        public static async void Purchase (string productID, Action<bool> onPurchased) {
+            var success = await PurchaseAsync (productID);
+            onPurchased?.Invoke (success);
+        }
+
         /// <summary>発注</summary>
         /// <remarks>消耗品は事後に別途消費する</remarks>
         /// <param name="product">製品</param>
-        /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static Task<bool> PurchaseAsync (Product product, Action<bool>? onPurchased = null)
-            => PurchaseAsync (product.definition.id, onPurchased);
+        public static Task<bool> PurchaseAsync (Product product)
+            => PurchaseAsync (product.definition.id);
 
         /// <summary>発注</summary>
         /// <remarks>消耗品は事後に別途消費する</remarks>
         /// <param name="productId">製品ID</param>
-        /// <param name="onPurchased">完了時コールバックハンドラ</param>
         /// <returns>成否</returns>
-        public static async Task<bool> PurchaseAsync (string productId, Action<bool>? onPurchased = null) {
+        public static async Task<bool> PurchaseAsync (string productId) {
 			Debug.Log ($"PurchaseAsync ({productId})");
             if (!IsValid) {
                 // 初期化できていないので再初期化
@@ -271,9 +286,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             if (IsValid) {
                 if (instance.Purchase (productId)) {
                     await TaskEx.DelayWhile (() => IsPurchasing); // 購入処理完了(保留を含む)を待つ
-                    var success = Result.IsSuccess;
-                    onPurchased?.Invoke (success);
-                    return success;
+                    return Result.IsSuccess;
                 }
             }
             return false;
@@ -380,7 +393,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>目録を取得</summary>
         /// <returns>成否</returns>
         private async Task<bool> FetchProducts () {
-            if (!isFetchingProducts) {
+            if (!isFetchingProducts && ProductDefinitions is not null) {
                 Debug.Log ("目録請求");
                 isFetchingProducts = true;
                 Products.Clear ();
@@ -394,22 +407,28 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>目録を取得した</summary>
         /// <param name="products">製品</param>
         async void OnProductsFetched (List<Product> products) {
-            // アイテム定義の順にインデックスを列挙
-            var indexes = new int [ProductDefinitions.Count];
-            Array.Fill (indexes, -1);
-            for (var i = 0; i < products.Count; i++) {
-                var index = ProductDefinitions.FindIndex (x => x.id == products [i].definition.id);
-                if (index >= 0) {
-                    indexes [index] = i;
-                } else {
-                    Debug.Log ($"未定義製品: {products [i].definition.id} / {products [i].definition.type}");
+            if (ProductDefinitions is null) {
+                // 製品定義がないのに目録が取得された
+                Products = products;
+                Debug.LogError ($"製品定義不備: 目録数={products.Count}");
+            } else {
+                // アイテム定義の順にインデックスを列挙
+                var indexes = new int [ProductDefinitions.Count];
+                Array.Fill (indexes, -1);
+                for (var i = 0; i < products.Count; i++) {
+                    var index = ProductDefinitions.FindIndex (x => x.id == products [i].definition.id);
+                    if (index >= 0) {
+                        indexes [index] = i;
+                    } else {
+                        Debug.Log ($"未定義製品: {products [i].definition.id} / {products [i].definition.type}");
+                    }
                 }
-            }
-            // アイテムを列挙 (未定義アイテムは除去される)
-            Products.Clear();
-            for (var i = 0; i < indexes.Length; i++) {
-                if (indexes [i] >= 0) {
-                    Products.Add (products [indexes [i]]);
+                // アイテムを列挙 (未定義アイテムは除去される)
+                Products.Clear ();
+                for (var i = 0; i < indexes.Length; i++) {
+                    if (indexes [i] >= 0) {
+                        Products.Add (products [indexes [i]]);
+                    }
                 }
             }
             await UpdateInventory (products);
