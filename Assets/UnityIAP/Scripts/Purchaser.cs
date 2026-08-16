@@ -224,30 +224,36 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 			}
 		}
 
-        /// <summary>所有状態</summary>
-        public static EntitlementStatus CheckEntitlement (string productId)
-            => IsValid 
-                ? IsConsumable (productId)
-                    ? EntitlementStatus.EntitledUntilConsumed // 未消費
-                    : IsDeferred (productId) 
-                        ? EntitlementStatus.EntitledButNotFinished // 承認待ち
-                        : Inventory [productId] // 所持/不所持
-                : EntitlementStatus.Unknown // 不明
-            ;
+        /// <summary>所有状態 (リアルタイム)</summary>
+        public static async Task<EntitlementStatus> CheckEntitlementAsync (string productId) {
+            if (IsValid) {
+                if (IsConsumable (productId)) {
+                    return EntitlementStatus.EntitledUntilConsumed; // 未消費
+                } else if (IsDeferred (productId)) {
+                    return EntitlementStatus.EntitledButNotFinished; // 承認待ち
+                } else {
+                    // リアルタイム更新
+                    await instance.UpdateInventory (productId);
+                    return Inventory [productId]; // 所持/不所持
+                }
+            } else {
+                return EntitlementStatus.Unknown; // 不明
+            }
+        }
 
-        /// <summary>所有/未消費/未承認の不在</summary>
+        /// <summary>所有/未消費/未承認の不在 (キャッシュを参照)</summary>
         public static bool IsPurchasable (string productId) => !IsStocked (productId) && !IsDeferred (productId);
 
-        /// <summary>未承認</summary>
+        /// <summary>未承認 (キャッシュを参照)</summary>
         public static bool IsDeferred (string productId) => IsValid && instance.DeferredOrder.ContainsKey (productId);
 
-        /// <summary>未消費</summary>
+        /// <summary>未消費 (キャッシュを参照)</summary>
         public static bool IsConsumable (string productId) => IsValid && instance.PendingOrder.ContainsKey (productId);
 
-        /// <summary>所有/未消費</summary>
+        /// <summary>所有/未消費 (キャッシュを参照)</summary>
         public static bool IsStocked (string productId) => IsConsumable (productId) || IsValid && Inventory.Contains (productId);
 
-        /// <summary>所有/未消費</summary>
+        /// <summary>所有/未消費 (キャッシュを参照)</summary>
         public static bool IsStocked (Product product) => IsStocked (product.definition.id);
 
         /// <summary>課金を開始してコールバックを得る</summary>
@@ -452,11 +458,30 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
         /// <summary>所有状態の更新</summary>
         async Task UpdateInventory (IEnumerable<Product> products) {
+            if (checkingEntitlementCount > 0) { return; } // 排他制御
             Debug.Log ("所有確認");
             foreach (Product product in products) {
                 checkingEntitlementCount++;
                 controller.CheckEntitlement (product);
             }
+            // 確認完了待つ
+            await TaskEx.DelayWhile (() => checkingEntitlementCount > 0);
+        }
+
+        /// <summary>所有状態の更新 (単品)</summary>
+        async Task UpdateInventory (string productId) {
+            if (checkingEntitlementCount > 0) { return; } // 排他制御
+            var product = Products.Find (x => x.definition.id == productId);
+            if (product is not null) {
+                await UpdateInventory (product);
+            }
+        }
+
+        /// <summary>所有状態の更新 (単品)</summary>
+        async Task UpdateInventory (Product product) {
+            if (checkingEntitlementCount > 0) { return; } // 排他制御
+            checkingEntitlementCount++;
+            controller.CheckEntitlement (product);
             // 確認完了待つ
             await TaskEx.DelayWhile (() => checkingEntitlementCount > 0);
         }
