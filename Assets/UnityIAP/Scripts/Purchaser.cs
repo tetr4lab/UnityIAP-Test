@@ -102,13 +102,6 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
     /// </remarks>
     public class Purchaser {
         #region Static
-        /// <summary>購入完了後所有確認をするまでの待機時間</summary>
-#if UNITY_IOS
-        private const int AfterPurchaseDelay = 1000;
-#else
-        private const int AfterPurchaseDelay = 1;
-#endif
-
         /// <summary>シングルトン</summary>
         private static Purchaser instance = new ();
 
@@ -473,26 +466,6 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             await TaskEx.DelayWhile (() => checkingEntitlementCount > 0);
         }
 
-        /// <summary>所有状態の更新 (単品)</summary>
-        async Task UpdateInventory (string productId) {
-            if (checkingEntitlementCount > 0) { return; } // 排他制御
-            Debug.Log ("所有確認");
-            var product = Products.Find (x => x.definition.id == productId);
-            if (product is not null) {
-                await UpdateInventory (product);
-            }
-        }
-
-        /// <summary>所有状態の更新 (単品)</summary>
-        async Task UpdateInventory (Product product) {
-            if (checkingEntitlementCount > 0) { return; } // 排他制御
-            Debug.Log ("所有確認");
-            checkingEntitlementCount++;
-            controller.CheckEntitlement (product);
-            // 確認完了待つ
-            await TaskEx.DelayWhile (() => checkingEntitlementCount > 0);
-        }
-
         /// <summary>所有確認</summary>
         /// <param name="entitlement">所有状態</param>
         void OnCheckEntitlement (Entitlement entitlement) {
@@ -583,7 +556,8 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             }
         }
 
-        /// <summary>保留中の注文を完了(消耗品の消費)</summary>
+        /// <summary>消耗品の消費</summary>
+        /// <remarks>保留中の注文を完了</remarks>
         /// <returns>保留中の注文の有無</returns>
         public async Task<bool> ConfirmPurchase (string productId) {
             Debug.Log ($"消費: {productId}");
@@ -607,7 +581,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 
         /// <summary>購入完了</summary>
         /// <param name="order">注文</param>
-        async void OnPurchaseConfirmed (Order order) {
+        void OnPurchaseConfirmed (Order order) {
             var products = order.CartOrdered.Items ().ToList ().ConvertAll (x => x.Product);
             var ids = string.Join (", ", products.ConvertAll (x => $"{x.definition?.id}"));
             switch (order) {
@@ -622,8 +596,13 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     break;
                 case ConfirmedOrder confirmedOrder:
                     // 完了の派生クラス
-                    await Task.Delay (AfterPurchaseDelay);
-                    await UpdateInventory (products);
+                    foreach (var product in products) {
+                        if (product.definition.type == ProductType.Consumable) {
+                            Inventory [product.definition.id] = EntitlementStatus.NotEntitled;
+                        } else if (product.definition.type == ProductType.NonConsumable) {
+                            Inventory [product.definition.id] = EntitlementStatus.FullyEntitled;
+                        }
+                    }
                     Debug.Log ($"購入完了:  {order.Info.Receipt} {ids}");
                     Result = PurchaseResult.SUCCESS;
                     break;
