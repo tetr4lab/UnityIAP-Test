@@ -259,10 +259,10 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         }
 
         /// <summary>課金を開始してコールバックを得る</summary>
-        /// <param name="productID">製品ID</param>
+        /// <param name="productId">製品ID</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
-        public static async void Purchase (string productID, Action<bool> onPurchased) {
-            var success = await PurchaseAsync (productID);
+        public static async void Purchase (string productId, Action<bool> onPurchased) {
+            var success = await PurchaseAsync (productId);
             onPurchased?.Invoke (success);
         }
 
@@ -295,19 +295,30 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>保留中の発注済み消費財を消費</summary>
         /// <param name="product">製品</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
-        /// <returns>成否</returns>
-        public static Task<bool> ConfirmPurchaseAsync (Product product, Action<bool>? onPurchased = null)
-            => ConfirmPurchaseAsync (product.definition.id, onPurchased);
+        public static void ConfirmPurchase (Product product, Action<bool>? onPurchased = null)
+            => ConfirmPurchase (product.definition.id, onPurchased);
 
         /// <summary>保留中の発注済み消費財を消費</summary>
         /// <param name="productId">製品ID</param>
         /// <param name="onPurchased">完了時コールバックハンドラ</param>
+        public static async void ConfirmPurchase (string productId, Action<bool>? onPurchased = null) {
+            var success = await ConfirmPurchaseAsync (productId);
+            onPurchased?.Invoke (success);
+        }
+
+        /// <summary>保留中の発注済み消費財を消費</summary>
+        /// <param name="product">製品</param>
         /// <returns>成否</returns>
-        public static async Task<bool> ConfirmPurchaseAsync (string productId, Action<bool>? onPurchased = null) {
+        public static Task<bool> ConfirmPurchaseAsync (Product product)
+            => ConfirmPurchaseAsync (product.definition.id);
+
+        /// <summary>保留中の発注済み消費財を消費</summary>
+        /// <param name="productId">製品ID</param>
+        /// <returns>成否</returns>
+        public static async Task<bool> ConfirmPurchaseAsync (string productId) {
+            Debug.Log ($"ConfirmPurchaseAsync ({productId})");
             if (IsValid && await instance.ConfirmPurchase (productId)) {
-                var success = Result == PurchaseResult.SUCCESS;
-                onPurchased?.Invoke (success);
-                return success;
+                return Result == PurchaseResult.SUCCESS;
             }
             return false;
         }
