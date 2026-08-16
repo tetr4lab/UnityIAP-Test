@@ -101,9 +101,16 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
     ///         └─ OnPurchaseFailed -> 発注失敗
     /// </remarks>
     public class Purchaser {
-		#region Static
-		/// <summary>シングルトン</summary>
-		private static Purchaser instance = new ();
+        #region Static
+        /// <summary>購入完了後所有確認をするまでの待機時間</summary>
+#if UNITY_IOS
+        private const int AfterPurchaseDelay = 1000;
+#else
+        private const int AfterPurchaseDelay = 1;
+#endif
+
+        /// <summary>シングルトン</summary>
+        private static Purchaser instance = new ();
 
         /// <summary>所有目録 製品の課金状況一覧、消費タイプは未消費を表す</summary>
         public static Inventory Inventory { get; private set; } = new ();
@@ -224,16 +231,14 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
 			}
 		}
 
-        /// <summary>所有状態 (リアルタイム)</summary>
-        public static async Task<EntitlementStatus> CheckEntitlementAsync (string productId) {
+        /// <summary>所有状態</summary>
+        public static EntitlementStatus CheckEntitlement (string productId) {
             if (IsValid) {
                 if (IsConsumable (productId)) {
                     return EntitlementStatus.EntitledUntilConsumed; // 未消費
                 } else if (IsDeferred (productId)) {
                     return EntitlementStatus.EntitledButNotFinished; // 承認待ち
                 } else {
-                    // リアルタイム更新
-                    await instance.UpdateInventory (productId);
                     return Inventory [productId]; // 所持/不所持
                 }
             } else {
@@ -241,19 +246,19 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             }
         }
 
-        /// <summary>所有/未消費/未承認の不在 (キャッシュを参照)</summary>
+        /// <summary>所有/未消費/未承認の不在</summary>
         public static bool IsPurchasable (string productId) => !IsStocked (productId) && !IsDeferred (productId);
 
-        /// <summary>未承認 (キャッシュを参照)</summary>
+        /// <summary>未承認</summary>
         public static bool IsDeferred (string productId) => IsValid && instance.DeferredOrder.ContainsKey (productId);
 
-        /// <summary>未消費 (キャッシュを参照)</summary>
+        /// <summary>未消費</summary>
         public static bool IsConsumable (string productId) => IsValid && instance.PendingOrder.ContainsKey (productId);
 
-        /// <summary>所有/未消費 (キャッシュを参照)</summary>
+        /// <summary>所有/未消費</summary>
         public static bool IsStocked (string productId) => IsConsumable (productId) || IsValid && Inventory.Contains (productId);
 
-        /// <summary>所有/未消費 (キャッシュを参照)</summary>
+        /// <summary>所有/未消費</summary>
         public static bool IsStocked (Product product) => IsStocked (product.definition.id);
 
         /// <summary>課金を開始してコールバックを得る</summary>
@@ -329,7 +334,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
             return false;
         }
 
-        #endregion
+#endregion
 
         /// <summary>コントローラー</summary>
         private StoreController controller;
@@ -471,6 +476,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>所有状態の更新 (単品)</summary>
         async Task UpdateInventory (string productId) {
             if (checkingEntitlementCount > 0) { return; } // 排他制御
+            Debug.Log ("所有確認");
             var product = Products.Find (x => x.definition.id == productId);
             if (product is not null) {
                 await UpdateInventory (product);
@@ -480,6 +486,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>所有状態の更新 (単品)</summary>
         async Task UpdateInventory (Product product) {
             if (checkingEntitlementCount > 0) { return; } // 排他制御
+            Debug.Log ("所有確認");
             checkingEntitlementCount++;
             controller.CheckEntitlement (product);
             // 確認完了待つ
@@ -615,6 +622,7 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
                     break;
                 case ConfirmedOrder confirmedOrder:
                     // 完了の派生クラス
+                    await Task.Delay (AfterPurchaseDelay);
                     await UpdateInventory (products);
                     Debug.Log ($"購入完了:  {order.Info.Receipt} {ids}");
                     Result = PurchaseResult.SUCCESS;

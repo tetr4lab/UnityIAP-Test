@@ -51,8 +51,8 @@ public class CatalogItem : MonoBehaviour {
 		lastEntitlement = EntitlementStatus.Unknown;
 	}
 
-	private async void Update () {
-		var entitlement = await Purchaser.CheckEntitlementAsync (product.definition.id);
+	private void Update () {
+		var entitlement = Purchaser.CheckEntitlement (product.definition.id);
 		if (product != null && (lastEntitlement != entitlement)) {
             Debug.Log ($"所有状態: {ID.text} {lastEntitlement} -> {entitlement}");
 			ID.color = Title.color = Description.color = valid ? entitlement switch {
