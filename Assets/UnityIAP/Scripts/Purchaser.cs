@@ -105,7 +105,8 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>シングルトン</summary>
         private static Purchaser instance = new ();
 
-        /// <summary>所有目録 製品の課金状況一覧、消費タイプは未消費を表す</summary>
+        /// <summary>所有目録</summary>
+        /// <remarks>製品に対する権利(<see cref="EntitlementStatus"/>)の辞書</remarks>
         public static Inventory Inventory { get; private set; } = new ();
 
         /// <summary>有効 初期化が完了している</summary>
