@@ -1,4 +1,5 @@
 ﻿#if ALLOW_UIAP
+//#define OnlyWhenConsumable // 消費可能なときだけ消費ボタンを有効化 / 常時有効(消費不能ならエラーする)
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
@@ -64,7 +65,11 @@ public class CatalogItem : MonoBehaviour {
             } : Color.red;
             Price.color = product.definition.type == ProductType.Consumable ? Color.cyan : Color.green;
             Buy.interactable = valid && entitlement == EntitlementStatus.NotEntitled;
-            Consume.interactable = valid && entitlement == EntitlementStatus.EntitledUntilConsumed;
+            Consume.interactable = valid
+#if OnlyWhenConsumable
+                && entitlement == EntitlementStatus.EntitledUntilConsumed
+#endif
+                ;
             Consume.gameObject.SetActive (Consume.interactable);
 			lastEntitlement = entitlement;
 		}
