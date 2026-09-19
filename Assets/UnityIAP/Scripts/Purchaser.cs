@@ -124,6 +124,9 @@ namespace Tetr4lab.UnityEngine.InAppPuchaser {
         /// <summary>処理中</summary>
         public static bool IsPurchasing => IsValid && instance.isPurchasing;
 
+        /// <summary>購入可能</summary>
+        public static bool IsPurchaseAvailable => IsValid && instance.PurchaseAvailable;
+
         /// <summary>IDから製品を得る</summary>
         /// <param name="productID">製品ID</param>
         /// <returns>製品</returns>
